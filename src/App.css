@@ -1,0 +1,15 @@
+@font-face {
+    font-family: font-roboto;
+    src: url('fonts/RobotoCondensed-VariableFont_wght.ttf');
+}
+.font-roboto {
+    font-family: font-roboto;
+}
+input{
+    caret-color: darkmagenta;
+    padding: 4px;
+    background-color: transparent;
+    border-bottom: solid 2px;
+    font-size: small;
+    outline: none;
+}
