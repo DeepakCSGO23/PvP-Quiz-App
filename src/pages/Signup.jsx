@@ -1,6 +1,7 @@
 import "../index.css";
 import "../App.css";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 export default function Signup() {
   const [profileName, setProfileName] = useState("");
   const [profilePassword, setProfilePassword] = useState("");
@@ -18,12 +19,14 @@ export default function Signup() {
     }
     // First check if the user user name is already taken
     const response = await fetch(
-      `http://localhost:5000/check-profile-name?profile-name=${profileName}`,
+      `http://localhost:5000/check-profile?profile-name=${profileName}`,
       {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       }
     );
+    const data = await response.json();
+
     if (response.status === 200) {
       console.log("username not available");
     } else if (response.status === 409) {
@@ -33,7 +36,7 @@ export default function Signup() {
       }, 4000);
       return;
     } else {
-      console.log("server error");
+      return;
     }
     // Create a brand new profile with profile name & password
     // const response = await fetch("http://localhost:5000/create-profile", {
@@ -47,10 +50,16 @@ export default function Signup() {
   };
   return (
     <div className="flex h-screen w-screen text-white font-roboto">
-      {/* Left side - Signup */}
-      <div className="flex border-2 flex-col bg-white text-black w-1/2 items-center justify-center">
-        <h1 className="text-4xl tracking-widest">Signup</h1>
-        <span className="text-gray-400 mt-2">Secure your webapp</span>
+      <div className="flex flex-col bg-white text-black w-full items-center justify-center signup">
+        {errorMessage && (
+          <p className="absolute top-40 bg-red-500 text-white p-2 px-6 text-xs rounded-3xl">
+            {errorMessage}!
+          </p>
+        )}
+        <h1 className="text-3xl tracking-widest">Signup</h1>
+        <h6 className="text-gray-400 mt-2 text-xs">
+          Secure your quiz experience!
+        </h6>
         <form
           action=""
           onSubmit={handleSubmitingProfile}
@@ -59,18 +68,17 @@ export default function Signup() {
           <label htmlFor="username" className="flex items-center">
             <img src="profile.svg" alt="Profile" />{" "}
             <input
+              placeholder="User Name"
               onChange={(e) => setProfileName(e.target.value)}
               id="username"
               className="ml-4"
               type="text"
             />
-            {errorMessage && (
-              <p className="text-red-500 text-xs">{errorMessage}</p>
-            )}
           </label>
           <label htmlFor="password" className="flex items-center">
             <img src="password.svg" alt="Profile" />{" "}
             <input
+              placeholder="Password"
               onChange={(e) => setProfilePassword(e.target.value)}
               id="password"
               className="ml-4"
@@ -80,6 +88,7 @@ export default function Signup() {
           <label htmlFor="repassword" className="flex items-center">
             <img src="password.svg" alt="Profile" />{" "}
             <input
+              placeholder="Re-Password"
               onChange={(e) => setProfileRePassword(e.target.value)}
               id="repassword"
               className="ml-4"
@@ -88,14 +97,19 @@ export default function Signup() {
           </label>
           <button
             type="submit"
-            className="p-3 bg-blue-500 text-white rounded-3xl hover:bg-blue-600 duration-500"
+            className="p-3 bg-blue-500 text-white text-sm rounded-3xl hover:bg-blue-600 duration-500"
           >
             Sign up
           </button>{" "}
         </form>
+        <h6 className="text-gray-400 mt-6 text-xs">
+          Already a user?{" "}
+          <Link to="/login">
+            {" "}
+            <span className="hover:underline">Login here</span>
+          </Link>
+        </h6>
       </div>
-      {/* Right side - Login*/}
-      <div className="flex border-2 flex-col bg-[#afbbdd] text-black w-1/2 items-center justify-center"></div>
     </div>
   );
 }
