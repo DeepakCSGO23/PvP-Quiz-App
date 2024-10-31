@@ -51,7 +51,7 @@ export default function Signup() {
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        history("/dashboard");
+        history(`/dashboard?userName=${profileName}`);
       }
     }
   };

@@ -51,8 +51,14 @@ type Message struct {
 	UserName string `json:"userName"`
 }
 
+// Defining a struct to hold both the websocket connection and its profile name
+type PlayerInfo struct {
+	Connection *websocket.Conn
+	UserName   string
+}
+
 // A map to store room id as key and array of 2 strings as profile name of two players
-var playersInQueue = make(map[string][]string)
+var playersInQueue = make(map[string][]PlayerInfo)
 
 // Connect to MongoDB and set the quiz database and profile collection
 func connectMongoDB() {
@@ -156,8 +162,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	// Infinite loop to keep reading messages and writing messages back
 	for {
 		messageType, message, err := ws.ReadMessage()
+		// Client disconnects
 		if err != nil {
-			log.Println("Client disconnected")
+			log.Println("Client disconnected", err)
 			break
 		}
 		var jsonMessage Message
@@ -170,14 +177,25 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		var matchFound bool = false
 
 		// Incase the action is join check the queue for any empty room if not create one and add the user to the room
-		if userAction == "open" {
-
+		if userAction == "connect" {
 			// Traverse the queue and find a match for the user
 			for roomId, players := range playersInQueue {
 				// We found a match for the user
 				if len(players) == 1 {
-					playersInQueue[roomId] = append(playersInQueue[roomId], userName)
+					// Now we found a match so notify both user that the match is found
+					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, UserName: userName})
 					matchFound = true
+					// Send a message to both clients in the room that match has been found
+					confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","roomId":"%s"}`, roomId))
+					// Send confirmation to two users that a match is found
+					for i := 0; i < 2; i++ {
+						if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+							log.Printf("Error sending match confirmation message to user\n")
+						} else {
+							log.Print("Message send to both the users")
+						}
+					}
+					fmt.Printf(playersInQueue[roomId][0].UserName)
 				}
 			}
 			// We didnt found a match all room is filled so create a new room
@@ -188,31 +206,31 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Fatalf("Error generating random value: %v", err)
 					return
 				}
-				playersInQueue[roomId] = append(playersInQueue[roomId], userName)
+				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, UserName: userName})
+			}
+		} else {
+			// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
+			for roomId, playerInfo := range playersInQueue {
+				// Make index as _ and player contains array of struct containing user name and websocket address
+				for _, player := range playerInfo {
+					// Remove the room from the queuing server
+					//! I guess the pointer in memory if freed
+					if player.UserName == userName {
+						delete(playersInQueue, roomId)
+					}
+				}
 			}
 		}
-		// } else {
-		// 	// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
-		// 	for roomId, players := range playersInQueue {
-		// 		for _, player := range players {
-		// 			if player == userName {
-		// 				// Remove the room if anyone of the users leaves the server after quiting the game mid-game or after finishing the game
-		// 				delete(playersInQueue, roomId)
-		// 				break
-		// 			}
-		// 		}
-		// 	}
-		// }
 		// Printing all room id with users inside it
 		for roomId, players := range playersInQueue {
 			log.Printf("Room id: %s Players : %v\n", roomId, players)
 		}
 		if err := ws.WriteMessage(messageType, message); err != nil {
 			log.Println("Error writing message:", err)
-
+		} else {
+			log.Print("hi from golang server")
 		}
 	}
-
 }
 
 // For creating random hex values using crypto module this is the room
