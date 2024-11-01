@@ -1,62 +1,60 @@
 import "../index.css";
 import "../App.css";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useWebSocket } from "../contexts/WebSocketContext";
 import Header from "../components/Header";
-export default function Signup() {
-  const wsRef = useRef(null);
+export default function Dashboard() {
+  const { ws } = useWebSocket();
+
+  // const wsRef = useRef(null);
   const [isFindingMatch, setIsFindingMatch] = useState(true);
   const url = new URL(window.location.href);
 
   const [userName] = useState(url.searchParams.get("userName"));
   const history = useNavigate();
   useEffect(() => {
-    // Initialiazing the WebSocket connection
-    wsRef.current = new WebSocket("ws://localhost:5000/ws");
-    // Called only one time after the websocket connection is established
-    wsRef.current.onopen = () => {
-      console.log("connected to websocket server");
-    };
-    // When the client receives any message from the socket server
-    wsRef.current.onmessage = (e) => {
-      console.log(typeof e.data);
-      const data = JSON.parse(e.data);
-      console.log(data.message);
-      if (data.message === "Match found!") {
-        history(`/room?roomId=${data.roomId}`);
-      }
-    };
-    wsRef.current.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-    // Send profile name from here then in backend remove the profile name on closing state
-    wsRef.current.onclose = () => {
-      console.log("closing websocket server");
-    };
-    // Clean up the WebSocket connection when the component unmounts
-    return () => {
-      wsRef.current.close();
-    };
-  }, []);
-
+    // Log ws whenever it changes
+    if (ws) {
+      console.log("websocket obj", ws);
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        console.log(data);
+        if (data.message === "Match found!") {
+          history(`/room?id=${data.roomId}`);
+        }
+      };
+    } else {
+      console.error("WebSocket is not initialized.");
+    }
+  }, [ws]);
   const handleFindingMatch = () => {
     // First send the player name details to the websocket server after clicking "Find Match" button
-    wsRef.current.send(
-      JSON.stringify({
-        action: "connect",
-        userName: userName,
-      })
-    );
+    if (ws) {
+      console.log("finding match");
+      ws.send(
+        JSON.stringify({
+          action: "connect",
+          userName: userName,
+        })
+      );
+    } else {
+      console.error("WebSocket is not initialized during button click.");
+    }
     setIsFindingMatch(false);
   };
   // Disconnect user from the user
   const handleDisconnectingMatch = () => {
-    wsRef.current.send(
-      JSON.stringify({
-        action: "disconnect",
-        userName: userName,
-      })
-    );
+    if (ws) {
+      ws.send(
+        JSON.stringify({
+          action: "disconnect",
+          userName: userName,
+        })
+      );
+      console.log("disconnecting");
+    }
+
     setIsFindingMatch(true);
   };
   return (
