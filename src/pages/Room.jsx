@@ -10,10 +10,10 @@ const Room = () => {
   const [questionTimer, setQuestionTimer] = useState(5);
   const [isMatchCompleted, setIsMatchCompleted] = useState(false);
   const url = new URLSearchParams(window.location.search);
-
   const [roomId] = useState(url.get("id"));
   const [playerName] = useState(url.get("playerName"));
   const [opponentTotalPoints, setOpponentTotalPoints] = useState(null);
+  const [matchResult, setMatchResult] = useState(null);
   useEffect(() => {
     if (ws) {
       // Handle incoming messages or perform actions
@@ -88,9 +88,7 @@ const Room = () => {
       },
     ]);
   }, []);
-  // setCurrentQuestionIndex((prev) =>
-  //   prev < questions.length - 1 ? prev + 1 : prev
-  // );
+
   // Run side-effects on question timer on first render and when the question changes
   useEffect(() => {
     // The interval runs every 1 second
@@ -125,7 +123,7 @@ const Room = () => {
     } else {
       ws.send(
         JSON.stringify({
-          action: "match_completed",
+          action: "player_completed",
           roomId: roomId,
           playerName: playerName,
           playerPoints: newTotalPoints,
@@ -135,7 +133,25 @@ const Room = () => {
       setIsMatchCompleted(true);
     }
   };
-
+  // Run sideeffect whenever the match is completed and when we get the opponent's points
+  useEffect(() => {
+    console.log("rendered");
+    // You have to complete the match and also need the opponent's total points
+    if (isMatchCompleted && opponentTotalPoints) {
+      if (totalPoints > opponentTotalPoints) {
+        setMatchResult("won");
+      } else if (totalPoints < opponentTotalPoints) {
+        setMatchResult("lost");
+      } else {
+        setMatchResult("tie");
+      }
+      // Store the points scored in the quiz
+      // Ending the match removing the players from server
+      ws.send(JSON.stringify({ action: "match_completed", roomId: roomId }));
+      // Close the websocket server
+      ws.close();
+    }
+  }, [isMatchCompleted, opponentTotalPoints]);
   return (
     <div className="flex flex-col h-screen w-screen text-white font-roboto">
       <Header />
@@ -180,6 +196,19 @@ const Room = () => {
             </p>
           </h1>
         )}
+        {matchResult === "won" ? (
+          <div className="absolute h-screen w-screen flex items-center justify-center bg-green-600">
+            <h1 className="text-6xl text-white">You Won!</h1>
+          </div>
+        ) : matchResult === "lost" ? (
+          <div className="absolute h-screen w-screen flex items-center justify-center bg-red-600">
+            <h1 className="text-6xl text-white">You Lost!</h1>
+          </div>
+        ) : matchResult === "tie" ? (
+          <div className="absolute h-screen w-screen flex items-center justify-center bg-yellow-600">
+            <h1 className="text-6xl text-white">It's a Tie!</h1>
+          </div>
+        ) : null}
       </div>
     </div>
   );

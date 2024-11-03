@@ -19,6 +19,7 @@ export default function Signup() {
         headers: { "Content-Type": "application/json" },
       }
     );
+
     // Check first if password and repassword match
     if (profilePassword !== profileRePassword) {
       setErrorMessage("Passwords dont match");
@@ -29,6 +30,7 @@ export default function Signup() {
     }
     // Contains json data from the golang backend
     const data = await response.json();
+    console.log(data);
     // There is no username registered
     if (data.message === "notTaken") {
       setErrorMessage("Cannot find player name");
@@ -51,7 +53,7 @@ export default function Signup() {
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        history(`/dashboard?playerName=${profileName}`);
+        //history(`/dashboard?playerName=${profileName}`);
       }
     }
   };

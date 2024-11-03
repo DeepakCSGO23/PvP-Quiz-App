@@ -32,17 +32,20 @@ var upgrader = websocket.Upgrader{
 var client *mongo.Client
 var collection *mongo.Collection
 
-// Profile struct to hold profile data (Sign up)
+// Profile struct to hold profile data used during Signup and login
 type Profile struct {
 	ProfileName     string `json:"profileName"`
 	ProfilePassword string `json:"profilePassword"`
+	TotalTrophies   uint16 `json:"totalTrophies"`
 }
 
-// Response struct to hold the JSON response message
+// Response struct to hold the JSON response message used during sending json message during login
 type Response struct {
 	Message         string `json:"message,omitempty"`
 	ProfileName     string `json:"profileName,omitempty"`
 	ProfilePassword string `json:"profilePassword,omitempty"`
+	// You should use Omitempty because this will skip this field if not set
+	TotalTrophies uint16 `json:"totalTrophies"`
 }
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
@@ -105,7 +108,7 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 	// Searching for a document with the given profileName in the MongoDB collection
 	var existingProfile Profile
 	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}).Decode(&existingProfile)
-
+	fmt.Printf("%+v", existingProfile)
 	// If no document is found, the profile name is not taken, so send an OK response
 	if err == mongo.ErrNoDocuments {
 		json.NewEncoder(w).Encode(Response{Message: "notTaken"})
@@ -115,7 +118,6 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error checking username", http.StatusInternalServerError)
 		return
 	}
-
 	// If no error, it means the username exists, so send a conflict response with profile details
 	w.Header().Set("Content-Type", "application/json")
 	// Send the profile name and password in the JSON response
@@ -123,12 +125,13 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		Message:         "taken",
 		ProfileName:     existingProfile.ProfileName,
 		ProfilePassword: existingProfile.ProfilePassword,
+		TotalTrophies:   existingProfile.TotalTrophies,
 	}
 	json.NewEncoder(w).Encode(response)
 }
 
 // Save profile data to MongoDB
-func saveProfile(w http.ResponseWriter, r *http.Request) {
+func createProfile(w http.ResponseWriter, r *http.Request) {
 	// Decode the JSON request body into a Profile struct
 	var profile Profile
 	err := json.NewDecoder(r.Body).Decode(&profile)
@@ -140,6 +143,7 @@ func saveProfile(w http.ResponseWriter, r *http.Request) {
 	_, err = collection.InsertOne(context.TODO(), bson.M{
 		"profileName":     profile.ProfileName,
 		"profilePassword": profile.ProfilePassword,
+		"totalTrophies":   0,
 	})
 	if err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
@@ -232,7 +236,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-		} else if userAction == "match_completed" {
+		} else if userAction == "player_completed" {
 			// Match is completed now we have to store total points scored by both of them and find who wins then end the room
 			roomId := jsonMessage.RoomId
 			playerName := jsonMessage.PlayerName
@@ -251,11 +255,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Error sending message to opponent\n")
 				}
 			}
+		} else if userAction == "match_completed" {
+			// When the match is completed remove the room from the server
+			roomId := jsonMessage.RoomId
+			delete(playersInQueue, roomId)
 		}
-
-		// if err := ws.WriteMessage(messageType, message); err != nil {
-		// 	log.Println("Error writing message:", err)
-		// }
 	}
 }
 
@@ -286,7 +290,7 @@ func main() {
 	// Websocket connection
 	mux.HandleFunc("/ws", handleConnections)
 	// Setting HTTP endpoint for saving profile data
-	mux.HandleFunc("/create-profile", saveProfile)
+	mux.HandleFunc("/create-profile", createProfile)
 	// Setting HTTP endpoint for checking profile name (used to check if the username exists or not while creating account and when during login auth)
 	mux.HandleFunc("/check-profile", checkProfileNameExists)
 	// Setting up CORS
