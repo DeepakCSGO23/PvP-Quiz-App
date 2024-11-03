@@ -17,7 +17,11 @@ export const WebSocketProvider = ({ children }) => {
 
   useEffect(() => {
     const websocket = new WebSocket("ws://localhost:5000/ws"); // Update to your WebSocket URL
-
+    websocket.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      //opponent_total_points
+      console.log("Message received in Room:", data);
+    };
     websocket.onopen = () => {
       console.log("WebSocket connected");
       setWs(websocket);

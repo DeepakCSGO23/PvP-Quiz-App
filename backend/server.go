@@ -47,14 +47,17 @@ type Response struct {
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
 type Message struct {
-	Action   string `json:"action"`
-	UserName string `json:"userName"`
+	Action       string `json:"action"`
+	RoomId       string `json:"roomId"`
+	PlayerName   string `json:"playerName"`
+	PlayerPoints int    `json:"playerPoints,omitempty"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
 type PlayerInfo struct {
-	Connection *websocket.Conn
-	UserName   string
+	Connection   *websocket.Conn
+	PlayerName   string
+	PlayerPoints int
 }
 
 // A map to store room id as key and array of 2 strings as profile name of two players
@@ -161,7 +164,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Client connected!")
 	// Infinite loop to keep reading messages and writing messages back
 	for {
-		messageType, message, err := ws.ReadMessage()
+		_, message, err := ws.ReadMessage()
 		// Client disconnects
 		if err != nil {
 			log.Println("Client disconnected", err)
@@ -171,8 +174,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(message, &jsonMessage); err != nil {
 			log.Println("Error parsing message:", err)
 		}
+		log.Printf("message %v", jsonMessage)
 		// Successfully parsed the json message from client (can be joining or leaving)
-		userName := jsonMessage.UserName
+		userPlayerName := jsonMessage.PlayerName
 		userAction := jsonMessage.Action
 		var matchFound bool = false
 
@@ -183,19 +187,27 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 				// We found a match for the user
 				if len(players) == 1 {
 					// Now we found a match so notify both user that the match is found
-					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, UserName: userName})
+					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName})
 					matchFound = true
-					// Send a message to both clients in the room that match has been found
-					confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","roomId":"%s"}`, roomId))
+
 					// Send confirmation to two users that a match is found
 					for i := 0; i < 2; i++ {
-						if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
-							log.Printf("Error sending match confirmation message to user\n")
+						log.Print("user name", userPlayerName)
+						if i == 0 {
+							// Send a message to first player in the room that match has been found
+							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][1].PlayerName, roomId))
+							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+								log.Printf("Error sending match confirmation message to user\n")
+							}
 						} else {
-							log.Print("Message send to both the users")
+							// Send a message to second player in the room that match has been found
+							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][0].PlayerName, roomId))
+							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+								log.Printf("Error sending match confirmation message to user\n")
+							}
 						}
+
 					}
-					fmt.Printf(playersInQueue[roomId][0].UserName)
 				}
 			}
 			// We didnt found a match all room is filled so create a new room
@@ -206,30 +218,44 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Fatalf("Error generating random value: %v", err)
 					return
 				}
-				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, UserName: userName})
+				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName})
 			}
-		} else {
+		} else if userAction == "disconnect" {
 			// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
 			for roomId, playerInfo := range playersInQueue {
 				// Make index as _ and player contains array of struct containing user name and websocket address
 				for _, player := range playerInfo {
 					// Remove the room from the queuing server
 					//! I guess the pointer in memory if freed
-					if player.UserName == userName {
+					if player.PlayerName == userPlayerName {
 						delete(playersInQueue, roomId)
 					}
 				}
 			}
+		} else if userAction == "match_completed" {
+			// Match is completed now we have to store total points scored by both of them and find who wins then end the room
+			roomId := jsonMessage.RoomId
+			playerName := jsonMessage.PlayerName
+			playerPoints := jsonMessage.PlayerPoints
+			// The first player is the one who send the total points to the server
+			if playersInQueue[roomId][0].PlayerName == playerName {
+				// We know have the total points scored by player1 so send the data to player2
+				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
+				if err := playersInQueue[roomId][1].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+					log.Printf("Error sending message to opponent\n")
+				}
+			} else {
+				// We know have the total points scored by player2 so send the data to player1
+				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
+				if err := playersInQueue[roomId][0].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+					log.Printf("Error sending message to opponent\n")
+				}
+			}
 		}
-		// Printing all room id with users inside it
-		for roomId, players := range playersInQueue {
-			log.Printf("Room id: %s Players : %v\n", roomId, players)
-		}
-		if err := ws.WriteMessage(messageType, message); err != nil {
-			log.Println("Error writing message:", err)
-		} else {
-			log.Print("hi from golang server")
-		}
+
+		// if err := ws.WriteMessage(messageType, message); err != nil {
+		// 	log.Println("Error writing message:", err)
+		// }
 	}
 }
 

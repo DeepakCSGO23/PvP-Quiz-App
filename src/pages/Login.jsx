@@ -31,7 +31,7 @@ export default function Signup() {
     const data = await response.json();
     // There is no username registered
     if (data.message === "notTaken") {
-      setErrorMessage("Cannot find username");
+      setErrorMessage("Cannot find player name");
       setTimeout(() => {
         setErrorMessage("");
       }, 4000);
@@ -51,7 +51,7 @@ export default function Signup() {
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        history(`/dashboard?userName=${profileName}`);
+        history(`/dashboard?playerName=${profileName}`);
       }
     }
   };
@@ -109,8 +109,9 @@ export default function Signup() {
             />
           </label>
           <button
+            onTouchStart={handleSubmitingProfile}
             type="submit"
-            className="p-3 bg-blue-500 text-white text-sm rounded-3xl hover:bg-blue-600 duration-500"
+            className="p-3 bg-blue-500 text-white text-sm rounded-3xl hover:bg-blue-600 duration-500 cursor-pointer"
           >
             Login
           </button>{" "}
