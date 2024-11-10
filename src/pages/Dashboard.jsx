@@ -52,7 +52,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen text-white font-roboto">
+    <div className="flex flex-col h-screen w-screen text-white font-roboto overflow-hidden">
       <Header />
       <div
         className={`flex flex-col h-full w-full ${

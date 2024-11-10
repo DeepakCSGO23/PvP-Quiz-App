@@ -135,7 +135,6 @@ const Room = () => {
   };
   // Run sideeffect whenever the match is completed and when we get the opponent's points
   useEffect(() => {
-    console.log("rendered");
     // You have to complete the match and also need the opponent's total points
     if (isMatchCompleted && opponentTotalPoints) {
       if (totalPoints > opponentTotalPoints) {
