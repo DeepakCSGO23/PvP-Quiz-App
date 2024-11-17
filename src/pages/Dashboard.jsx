@@ -44,6 +44,7 @@ export default function Dashboard() {
         JSON.stringify({
           action: "connect",
           playerName: playerName,
+          totalTrophies: 20,
         })
       );
     } else {

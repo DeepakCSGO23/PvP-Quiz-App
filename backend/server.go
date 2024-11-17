@@ -53,7 +53,9 @@ type Message struct {
 	Action       string `json:"action"`
 	RoomId       string `json:"roomId"`
 	PlayerName   string `json:"playerName"`
-	PlayerPoints int    `json:"playerPoints,omitempty"`
+	PlayerPoints uint16 `json:"playerPoints,omitempty"`
+	// This field will hold the total trophies a user got when he enters the server
+	TotalTrophies uint16 `json:"totalTrophies"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
@@ -61,6 +63,8 @@ type PlayerInfo struct {
 	Connection   *websocket.Conn
 	PlayerName   string
 	PlayerPoints int
+	// Will store the total trophies scored so far
+	TotalTrophies uint16 `json:"totalTrophies"`
 }
 
 // A map to store room id as key and array of 2 strings as profile name of two players
@@ -178,14 +182,16 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(message, &jsonMessage); err != nil {
 			log.Println("Error parsing message:", err)
 		}
-		log.Printf("message %v", jsonMessage)
 		// Successfully parsed the json message from client (can be joining or leaving)
 		userPlayerName := jsonMessage.PlayerName
 		userAction := jsonMessage.Action
+		playerTotalTrophies := jsonMessage.TotalTrophies
+
 		var matchFound bool = false
 
 		// Incase the action is join check the queue for any empty room if not create one and add the user to the room
 		if userAction == "connect" {
+			log.Printf("total trophies is %v", playerTotalTrophies)
 			// Traverse the queue and find a match for the user
 			for roomId, players := range playersInQueue {
 				// We found a match for the user
