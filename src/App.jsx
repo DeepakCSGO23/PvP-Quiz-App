@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Room from "./pages/Room";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
 import Leaderboard from "./pages/Leaderboard";
+import Profile from "./pages/Profile";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           }
         />
         <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </Router>
     //</WebSocketProvider>

@@ -6,13 +6,32 @@ import { useWebSocket } from "../contexts/WebSocketContext";
 import Header from "../components/Header";
 export default function Dashboard() {
   const { ws } = useWebSocket();
-
+  const [totalTrophies, setTotalTrophies] = useState(null);
   const [isMatchFound, setIsMatchFound] = useState(false);
   const [opponentName, setOpponentName] = useState("");
   const [joiningRoomCountDown, setJoiningRoomCountDown] = useState(3);
   const url = new URLSearchParams(window.location.search);
   const [playerName] = useState(url.get("playerName"));
   const history = useNavigate();
+  // First find the total trophies the user got so far
+  useEffect(() => {
+    const fetchTotalTrophies = async () => {
+      try {
+        // ! create a http endpoint
+        const response = await fetch(
+          "http://localhost:5000/get-trophies?playerName=${playerName}"
+        );
+        const totalTrohpies = await response.json();
+        if (totalTrohpies) {
+          setTotalTrophies(totalTrohpies);
+        } else {
+          console.log("Error fetching trophies from database");
+        }
+      } catch (err) {
+        console.error("Error fetching trohpies from database", err);
+      }
+    };
+  }, []);
   useEffect(() => {
     // Log ws whenever it changes
     if (ws) {

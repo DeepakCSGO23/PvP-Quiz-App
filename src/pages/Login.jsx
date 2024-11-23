@@ -53,7 +53,7 @@ export default function Signup() {
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        //history(`/dashboard?playerName=${profileName}`);
+        history(`/dashboard?playerName=${profileName}`);
       }
     }
   };

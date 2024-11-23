@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 
@@ -159,6 +160,29 @@ func createProfile(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Profile saved successfully")
 }
 
+// For getting leaderboard data
+func getLeaderboardData(w http.ResponseWriter, r *http.Request) {
+	opts := options.Find().SetSort(bson.D{{"totalTrophies", -1}}).SetLimit(10)
+	// Retrieves documents
+	cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
+	if err != nil {
+		http.Error(w, "Failed to retreive leaderboard data", http.StatusInternalServerError)
+		fmt.Print("error occured")
+		return
+	}
+	var leaderboard []Profile
+	// All iterates the cursor and decodes each document into results , the results parameter must be a pointer to a slice
+	if err := cursor.All(context.TODO(), &leaderboard); err != nil {
+		http.Error(w, "Failed to decode leaderboard data", http.StatusInternalServerError)
+		return
+	}
+	// All good the cursor is iterated and each document is decoded into results (from bson - binary JSON format to go struct data structure)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(leaderboard); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
 // Handling websocket connections
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	// Upgrade initial GET request to websocket
@@ -196,27 +220,33 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			for roomId, players := range playersInQueue {
 				// We found a match for the user
 				if len(players) == 1 {
-					// Now we found a match so notify both user that the match is found
-					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName})
-					matchFound = true
 
-					// Send confirmation to two users that a match is found
-					for i := 0; i < 2; i++ {
-						log.Print("user name", userPlayerName)
-						if i == 0 {
-							// Send a message to first player in the room that match has been found
-							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][1].PlayerName, roomId))
-							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
-								log.Printf("Error sending match confirmation message to user\n")
+					//* We found a opponent now we have to check if the opponent is equally skilled
+					trophyDifference := math.Abs(float64(playerTotalTrophies) - float64(playersInQueue[roomId][0].TotalTrophies))
+					// We found a perfect match
+					if trophyDifference <= 100 {
+
+						playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName, TotalTrophies: playerTotalTrophies})
+						matchFound = true
+
+						// Send confirmation to two users that a match is found
+						for i := 0; i < 2; i++ {
+							log.Print("user name", userPlayerName)
+							if i == 0 {
+								// Send a message to first player in the room that match has been found
+								confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][1].PlayerName, roomId))
+								if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+									log.Printf("Error sending match confirmation message to user\n")
+								}
+							} else {
+								// Send a message to second player in the room that match has been found
+								confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][0].PlayerName, roomId))
+								if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+									log.Printf("Error sending match confirmation message to user\n")
+								}
 							}
-						} else {
-							// Send a message to second player in the room that match has been found
-							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][0].PlayerName, roomId))
-							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
-								log.Printf("Error sending match confirmation message to user\n")
-							}
+
 						}
-
 					}
 				}
 			}
@@ -228,7 +258,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Fatalf("Error generating random value: %v", err)
 					return
 				}
-				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName})
+				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName, TotalTrophies: playerTotalTrophies})
 			}
 		} else if userAction == "disconnect" {
 			// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
@@ -243,7 +273,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else if userAction == "player_completed" {
-			// Match is completed now we have to store total points scored by both of them and find who wins then end the room
+			// The player finishes a question
 			roomId := jsonMessage.RoomId
 			playerName := jsonMessage.PlayerName
 			playerPoints := jsonMessage.PlayerPoints
@@ -276,15 +306,12 @@ func generateRandomHex(length int) (string, error) {
 	if length%2 != 0 {
 		bytes++
 	}
-
 	// Create a byte slice to hold the random bytes
 	randomBytes := make([]byte, bytes)
-
 	// Read random bytes from the crypto/rand source
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", err
 	}
-
 	// Convert the bytes to a hexadecimal string
 	return hex.EncodeToString(randomBytes)[:length], nil
 }
@@ -299,6 +326,8 @@ func main() {
 	mux.HandleFunc("/create-profile", createProfile)
 	// Setting HTTP endpoint for checking profile name (used to check if the username exists or not while creating account and when during login auth)
 	mux.HandleFunc("/check-profile", checkProfileNameExists)
+	// Getting leaderboard data
+	mux.HandleFunc("/leaderboard-data", getLeaderboardData)
 	// Setting up CORS
 	handler := cors.Default().Handler(mux)
 	// Start the server on port 5000

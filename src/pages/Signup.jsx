@@ -38,15 +38,6 @@ export default function Signup() {
     } else {
       return;
     }
-    // Create a brand new profile with profile name & password
-    // const response = await fetch("http://localhost:5000/create-profile", {
-    //   method: "POST",
-    //   headers: { "Content-Type": "application/json" },
-    //   body: JSON.stringify({
-    //     profileName,
-    //     profilePassword,
-    //   }),
-    // });
   };
   return (
     <div className="flex h-screen w-screen text-white font-roboto">
