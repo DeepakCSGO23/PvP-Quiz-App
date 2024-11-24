@@ -38,6 +38,8 @@ type Profile struct {
 	ProfileName     string `json:"profileName"`
 	ProfilePassword string `json:"profilePassword"`
 	TotalTrophies   uint16 `json:"totalTrophies"`
+	Status          string `json:"status"`
+	Country         string `json:"country"`
 }
 
 // Response struct to hold the JSON response message used during sending json message during login
@@ -46,7 +48,10 @@ type Response struct {
 	ProfileName     string `json:"profileName,omitempty"`
 	ProfilePassword string `json:"profilePassword,omitempty"`
 	// You should use Omitempty because this will skip this field if not set
+	// If we use omitempty that field will be not included in the final json if the field is empty
 	TotalTrophies uint16 `json:"totalTrophies"`
+	Status        string `json:"status"`
+	Country       string `json:"country"`
 }
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
@@ -131,6 +136,8 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		ProfileName:     existingProfile.ProfileName,
 		ProfilePassword: existingProfile.ProfilePassword,
 		TotalTrophies:   existingProfile.TotalTrophies,
+		Status:          existingProfile.Status,
+		Country:         existingProfile.Country,
 	}
 	json.NewEncoder(w).Encode(response)
 }
@@ -158,6 +165,40 @@ func createProfile(w http.ResponseWriter, r *http.Request) {
 	// Success response
 	w.WriteHeader(http.StatusCreated)
 	fmt.Fprintln(w, "Profile saved successfully")
+}
+
+// For updating profile data
+func updateProfileData(w http.ResponseWriter, r *http.Request) {
+	// profile variable holds structure data structure
+	var profile Profile
+	// Decoding request body
+	err := json.NewDecoder(r.Body).Decode(&profile)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	// Check if the profileName is provided
+	if profile.ProfileName == "" {
+		http.Error(w, "profile name is required", http.StatusBadRequest)
+		return
+	}
+	filter := bson.M{"profileName": profile.ProfileName} // Find by profileName
+	update := bson.M{
+		"$set": bson.M{
+			"profileName": profile.ProfileName,
+			"status":      profile.Status,
+			"country":     profile.Country,
+		},
+	}
+	_, err = collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		http.Error(w, "Failed to update profile data", http.StatusInternalServerError)
+		return
+	}
+	// Success response
+	w.WriteHeader(http.StatusCreated)
+	// Writing response to the response writer
+	w.Write([]byte(`{"message":"Profile updated successfully"}`))
 }
 
 // For getting leaderboard data
@@ -320,16 +361,25 @@ func main() {
 	// Connect to MongoDB
 	connectMongoDB()
 	mux := http.NewServeMux()
+	// Configure CORS to allow requests from your frontend
+	cors := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: true,
+	})
+	// Setting up CORS
+	handler := cors.Handler(mux)
 	// Websocket connection
 	mux.HandleFunc("/ws", handleConnections)
 	// Setting HTTP endpoint for saving profile data
 	mux.HandleFunc("/create-profile", createProfile)
 	// Setting HTTP endpoint for checking profile name (used to check if the username exists or not while creating account and when during login auth)
 	mux.HandleFunc("/check-profile", checkProfileNameExists)
+	// Updating profile data
+	mux.HandleFunc("/update-profile-data", updateProfileData)
 	// Getting leaderboard data
 	mux.HandleFunc("/leaderboard-data", getLeaderboardData)
-	// Setting up CORS
-	handler := cors.Default().Handler(mux)
 	// Start the server on port 5000
 	fmt.Println("Websocket server started on port 5000")
 	err := http.ListenAndServe(":5000", handler)
