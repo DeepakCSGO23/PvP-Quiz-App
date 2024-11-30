@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/cloudinary/cloudinary-go/v2"
+	"github.com/cloudinary/cloudinary-go/v2/api/admin"
+	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 
@@ -38,8 +41,9 @@ type Profile struct {
 	ProfileName     string `json:"profileName"`
 	ProfilePassword string `json:"profilePassword"`
 	TotalTrophies   uint16 `json:"totalTrophies"`
-	Status          string `json:"status"`
-	Country         string `json:"country"`
+	Status          string `json:"status,omitempty"`
+	Country         string `json:"country,omitempty"`
+	ProfileImageURL string `json:"profileImageURL,omitempty"`
 }
 
 // Response struct to hold the JSON response message used during sending json message during login
@@ -49,16 +53,17 @@ type Response struct {
 	ProfilePassword string `json:"profilePassword,omitempty"`
 	// You should use Omitempty because this will skip this field if not set
 	// If we use omitempty that field will be not included in the final json if the field is empty
-	TotalTrophies uint16 `json:"totalTrophies"`
-	Status        string `json:"status"`
-	Country       string `json:"country"`
+	TotalTrophies   uint16 `json:"totalTrophies"`
+	Status          string `json:"status,omitempty"`
+	Country         string `json:"country,omitempty"`
+	ProfileImageURL string `json:"profileImageURL,omitempty"`
 }
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
 type Message struct {
 	Action       string `json:"action"`
 	RoomId       string `json:"roomId"`
-	PlayerName   string `json:"playerName"`
+	PlayerName   string `json:"profileName"`
 	PlayerPoints uint16 `json:"playerPoints,omitempty"`
 	// This field will hold the total trophies a user got when he enters the server
 	TotalTrophies uint16 `json:"totalTrophies"`
@@ -110,6 +115,9 @@ func connectMongoDB() {
 func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 	// Get the profile-name query from the query parameter
 	profileName := r.URL.Query().Get("profile-name")
+
+	isRetreiveProfileImage := r.URL.Query().Get("get-profile-image")
+
 	if profileName == "" {
 		http.Error(w, "Missing profile-name parameter", http.StatusBadRequest)
 		return
@@ -118,7 +126,7 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 	// Searching for a document with the given profileName in the MongoDB collection
 	var existingProfile Profile
 	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}).Decode(&existingProfile)
-	fmt.Printf("%+v", existingProfile)
+
 	// If no document is found, the profile name is not taken, so send an OK response
 	if err == mongo.ErrNoDocuments {
 		json.NewEncoder(w).Encode(Response{Message: "notTaken"})
@@ -127,6 +135,31 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		// Other errors (e.g., database connection issues)
 		http.Error(w, "Error checking username", http.StatusInternalServerError)
 		return
+	}
+	// To store profile image url
+	var profileImageURL string
+	// If we want to get the profile image url from cloudinary
+	if isRetreiveProfileImage == "true" {
+		cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME")
+		cloudAPIKey := os.Getenv("CLOUDINARY_API_KEY")
+		cloudSecret := os.Getenv("CLOUDINARY_API_SECRET")
+		cld, err := cloudinary.NewFromParams(cloudName, cloudAPIKey, cloudSecret)
+		if err != nil {
+			http.Error(w, "Failed to initialize Cloudinary", http.StatusInternalServerError)
+			return
+		}
+
+		// Context for the upload process
+		ctx := context.Background()
+
+		// Uploading the image
+		res, err := cld.Admin.Asset(ctx, admin.AssetParams{PublicID: fmt.Sprintf("Duel of Wits/%s", profileName)})
+		if err != nil {
+			fmt.Print("Error when retreiving profile image information")
+			return
+		}
+		profileImageURL = res.SecureURL
+		fmt.Printf("profile image url is %v", profileImageURL)
 	}
 	// If no error, it means the username exists, so send a conflict response with profile details
 	w.Header().Set("Content-Type", "application/json")
@@ -138,7 +171,9 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		TotalTrophies:   existingProfile.TotalTrophies,
 		Status:          existingProfile.Status,
 		Country:         existingProfile.Country,
+		ProfileImageURL: profileImageURL,
 	}
+	//fmt.Print(response)
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -316,10 +351,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		} else if userAction == "player_completed" {
 			// The player finishes a question
 			roomId := jsonMessage.RoomId
-			playerName := jsonMessage.PlayerName
+			profileName := jsonMessage.PlayerName
 			playerPoints := jsonMessage.PlayerPoints
 			// The first player is the one who send the total points to the server
-			if playersInQueue[roomId][0].PlayerName == playerName {
+			if playersInQueue[roomId][0].PlayerName == profileName {
 				// We know have the total points scored by player1 so send the data to player2
 				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
 				if err := playersInQueue[roomId][1].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
@@ -338,6 +373,45 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			delete(playersInQueue, roomId)
 		}
 	}
+}
+func updateProfileImage(w http.ResponseWriter, r *http.Request) {
+	// Parsing the multipart form (2mb max size)
+	err := r.ParseMultipartForm(2 << 20)
+	if err != nil {
+		http.Error(w, "Unable to parse form", http.StatusBadRequest)
+		return
+	}
+	// Retreiving the file
+	file, _, err := r.FormFile("profileImage")
+	// Retreiving the profile name
+	profileName := r.FormValue("profileName")
+	if err != nil {
+		http.Error(w, "Error retrieving the file", http.StatusBadRequest)
+		return
+	}
+	// Releases file handle where file handle will consume system resource (file descriptors - used to read,write or manage file without directly manipulating the underlying data structures in the OS)
+	defer file.Close()
+	cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME")
+	cloudAPIKey := os.Getenv("CLOUDINARY_API_KEY")
+	cloudSecret := os.Getenv("CLOUDINARY_API_SECRET")
+	// Initializing cloudinary instance
+	cld, err := cloudinary.NewFromParams(cloudName, cloudAPIKey, cloudSecret)
+	if err != nil {
+		fmt.Print("Failed to initialize cloudinary")
+		return
+	}
+	// Context for the upload process
+	ctx := context.Background()
+
+	// Uploading the image
+	if _, err := cld.Upload.Upload(ctx, file, uploader.UploadParams{
+		Folder:   "Duel of Wits",
+		PublicID: profileName,
+	}); err != nil {
+		fmt.Print("Failed to upload image")
+		return
+	}
+	fmt.Printf("Profile image uploaded successfully!\n")
 }
 
 // For creating random hex values using crypto module this is the room
@@ -380,6 +454,8 @@ func main() {
 	mux.HandleFunc("/update-profile-data", updateProfileData)
 	// Getting leaderboard data
 	mux.HandleFunc("/leaderboard-data", getLeaderboardData)
+	// Run this function to store profile image in cloudinary
+	mux.HandleFunc("/update-profile-image", updateProfileImage)
 	// Start the server on port 5000
 	fmt.Println("Websocket server started on port 5000")
 	err := http.ListenAndServe(":5000", handler)

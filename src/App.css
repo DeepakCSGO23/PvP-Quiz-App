@@ -19,7 +19,8 @@
   background-repeat: no-repeat;
   background-size: contain;
 }
-input {
+input,
+select {
   caret-color: darkmagenta;
   padding: 2px;
   background-color: transparent;

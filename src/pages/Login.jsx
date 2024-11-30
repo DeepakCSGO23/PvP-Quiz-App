@@ -53,7 +53,9 @@ export default function Signup() {
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        history(`/dashboard?playerName=${profileName}`);
+        // ! TEMP SOLUTION : USE JWT AFTERWARS USING LOCAL STORAGE AS OF NOW
+        localStorage.setItem("profileName", profileName);
+        history(`/dashboard?profileName=${profileName}`);
       }
     }
   };

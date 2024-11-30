@@ -11,7 +11,7 @@ export default function Dashboard() {
   const [opponentName, setOpponentName] = useState("");
   const [joiningRoomCountDown, setJoiningRoomCountDown] = useState(3);
   const url = new URLSearchParams(window.location.search);
-  const [playerName] = useState(url.get("playerName"));
+  const [profileName] = useState(url.get("profileName"));
   const history = useNavigate();
   // First find the total trophies the user got so far
   useEffect(() => {
@@ -19,7 +19,7 @@ export default function Dashboard() {
       try {
         // ! create a http endpoint
         const response = await fetch(
-          "http://localhost:5000/get-trophies?playerName=${playerName}"
+          `http://localhost:5000/get-trophies?profileName=${profileName}`
         );
         const totalTrohpies = await response.json();
         if (totalTrohpies) {
@@ -31,6 +31,7 @@ export default function Dashboard() {
         console.error("Error fetching trohpies from database", err);
       }
     };
+    fetchTotalTrophies();
   }, []);
   useEffect(() => {
     // Log ws whenever it changes
@@ -46,7 +47,7 @@ export default function Dashboard() {
               if (prev == 0) {
                 // Clear interval first
                 clearInterval(intervalId);
-                history(`/room?id=${data.roomId}&playerName=${playerName}`);
+                history(`/room?id=${data.roomId}&profileName=${profileName}`);
                 return 0;
               }
               return prev - 1;
@@ -62,7 +63,7 @@ export default function Dashboard() {
       ws.send(
         JSON.stringify({
           action: "connect",
-          playerName: playerName,
+          profileName: profileName,
           totalTrophies: 20,
         })
       );
@@ -90,7 +91,7 @@ export default function Dashboard() {
           <button
             onClick={handleFindingMatch}
             type="button"
-            className="flex items-center p-4 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
+            className="shadow-2xl flex items-center p-4 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
           >
             <img
               src="search.svg"
