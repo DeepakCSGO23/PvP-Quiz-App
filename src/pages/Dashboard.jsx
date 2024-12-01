@@ -7,11 +7,14 @@ import Header from "../components/Header";
 export default function Dashboard() {
   const { ws } = useWebSocket();
   const [totalTrophies, setTotalTrophies] = useState(null);
+  const [isInQueue, setIsInQueue] = useState(false);
+  const [inQueueCountUp, setInQueueCountUp] = useState(0);
   const [isMatchFound, setIsMatchFound] = useState(false);
   const [opponentName, setOpponentName] = useState("");
   const [joiningRoomCountDown, setJoiningRoomCountDown] = useState(3);
-  const url = new URLSearchParams(window.location.search);
-  const [profileName] = useState(url.get("profileName"));
+  const profileName = new URLSearchParams(window.location.search).get(
+    "profileName"
+  );
   const history = useNavigate();
   // First find the total trophies the user got so far
   useEffect(() => {
@@ -57,6 +60,7 @@ export default function Dashboard() {
       };
     }
   }, [ws]);
+
   const handleFindingMatch = () => {
     // First send the player name details to the websocket server after clicking "Find Match" button
     if (ws) {
@@ -70,6 +74,15 @@ export default function Dashboard() {
     } else {
       console.error("WebSocket is not initialized during button click.");
     }
+    const queueIntervalId = setInterval(() => {
+      setInQueueCountUp((prev) => prev + 1);
+    }, 1000);
+
+    setIsInQueue(true);
+    // Cleanup interval on onmount or when a new match is found
+    return () => {
+      clearInterval(queueIntervalId);
+    };
   };
 
   return (
@@ -87,6 +100,13 @@ export default function Dashboard() {
             <h1>Match found</h1>
             <div className="flex">{opponentName}</div>
           </div>
+        ) : isInQueue ? (
+          <button
+            type="button"
+            className="shadow-2xl flex items-center p-4 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
+          >
+            Finding Match {inQueueCountUp}
+          </button>
         ) : (
           <button
             onClick={handleFindingMatch}

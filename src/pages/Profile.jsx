@@ -167,8 +167,10 @@ export default function Profile() {
             </div>
             <div className="flex flex-col">
               <label htmlFor="country">Country</label>
-              <select id="country">
-                {/* ! default */}
+              <select
+                id="country"
+                defaultValue={profileData && profileData.country}
+              >
                 {country.map((country, index) => (
                   <option key={index} value={country.name}>
                     {country.name}

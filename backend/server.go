@@ -191,6 +191,8 @@ func createProfile(w http.ResponseWriter, r *http.Request) {
 		"profileName":     profile.ProfileName,
 		"profilePassword": profile.ProfilePassword,
 		"totalTrophies":   0,
+		"status":          "",
+		"country":         "",
 	})
 	if err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
