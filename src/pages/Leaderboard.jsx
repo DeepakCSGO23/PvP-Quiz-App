@@ -21,7 +21,7 @@ export default function Leaderboard() {
       {/* Correct y-axis space between topic and the next section */}
       <div className="bg-[#C5E6DF] text-black flex flex-col space-y-20 h-full w-full items-center">
         {/* Correct space of header from header section */}
-        <h1 className="text-2xl tracking-widest mt-10 font-bebas-neue border-2 p-2 border-black pl-8 pr-8">
+        <h1 className="text-2xl tracking-widest mt-20 font-bebas-neue border-2 p-2 border-black pl-8 pr-8">
           Leaderboard
         </h1>
         <div className="flex flex-col h-full w-full">

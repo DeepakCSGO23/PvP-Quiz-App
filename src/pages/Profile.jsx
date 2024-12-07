@@ -14,9 +14,7 @@ export default function Profile() {
     // Get profile information
     const getProfileData = async () => {
       try {
-        const countryResponse = await fetch(
-          "https://dulcet-axolotl-a3ca72.netlify.app/country_name.json"
-        );
+        const countryResponse = await fetch("country_name.json");
         const countryData = await countryResponse.json();
 
         const profileResponse = await fetch(
@@ -27,7 +25,7 @@ export default function Profile() {
           }
         );
         const profileData = await profileResponse.json();
-
+        console.log(profileData);
         setProfileData(profileData);
         setInitialProfileData(profileData);
         setCountry(countryData);
@@ -81,23 +79,26 @@ export default function Profile() {
       {/* Correct y-axis space between topic and the next section */}
       <div className="bg-[#C5E6DF] text-black flex flex-col space-y-20 h-full w-full items-center">
         {/* Correct space of header from header section */}
-        <h1 className="text-2xl tracking-widest mt-10 font-bebas-neue border-2 p-2 border-black pl-8 pr-8">
+        <h1 className="text-2xl tracking-widest mt-20 font-bebas-neue border-2 p-2 border-black pl-8 pr-8">
           Profile
         </h1>
         <div className="flex flex-col h-full w-full items-center space-y-10">
-          <div className="relative h-32 w-32">
+          <div className="relative h-24 w-24">
             {/* Profile image */}
             {profileData && profileData.profileImageURL ? (
               <img
-                src={profileData.profileImageURL}
+                src={profileData.profileImageURL.replace(
+                  "upload/",
+                  "upload/w_100,h_100,c_fill/"
+                )}
                 alt="Profile Image"
-                className="h-32 w-32 rounded-full object-cover"
+                className="h-24 w-24 rounded-full object-cover"
               />
             ) : (
               <img
                 src="default.jpg"
                 alt="Default"
-                className="h-32 w-32 rounded-full object-cover"
+                className="h-24 w-24 rounded-full object-cover"
               />
             )}
 
@@ -135,10 +136,15 @@ export default function Profile() {
           <form
             onSubmit={handleSavingProfileData}
             action=""
-            className="flex flex-col space-y-8 text-sm"
+            className="flex flex-col space-y-8"
           >
             <div className="flex flex-col">
-              <label htmlFor="profileName">Profile Name</label>
+              <label
+                htmlFor="profileName"
+                className="text-teal-800 text-base font-medium"
+              >
+                Profile Name
+              </label>
               <input
                 id="profilename"
                 onChange={handleProfileDataChange}
@@ -152,7 +158,9 @@ export default function Profile() {
               />
             </div>
             <div className="flex flex-col">
-              <label htmlFor="status">Status</label>
+              <label htmlFor="status" className="text-teal-800 font-medium">
+                Status
+              </label>
               <input
                 id="status"
                 onChange={handleProfileDataChange}
@@ -166,7 +174,9 @@ export default function Profile() {
               />
             </div>
             <div className="flex flex-col">
-              <label htmlFor="country">Country</label>
+              <label htmlFor="country" className="text-teal-800 font-medium">
+                Country
+              </label>
               <select
                 id="country"
                 defaultValue={profileData && profileData.country}
