@@ -16,17 +16,33 @@ export default function Profile() {
       try {
         const countryResponse = await fetch("country_name.json");
         const countryData = await countryResponse.json();
+        // * JUST A TRY
+        const profileImageURLInLocalStorage =
+          sessionStorage.getItem("profileImageURL");
 
         const profileResponse = await fetch(
-          `http://localhost:5000/check-profile?profile-name=${profileName}&get-profile-image=true`,
+          `http://localhost:5000/check-profile?profile-name=${encodeURIComponent(
+            profileName
+          )}&get-profile-image=${
+            profileImageURLInLocalStorage ? "false" : "true"
+          }`,
           {
             method: "GET",
             headers: { "Content-Type": "application/json" },
           }
         );
         const profileData = await profileResponse.json();
-        console.log(profileData);
-        setProfileData(profileData);
+        if (!profileImageURLInLocalStorage) {
+          sessionStorage.setItem(
+            "profileImageURL",
+            profileData.profileImageURL
+          );
+        }
+        setProfileData(
+          !profileImageURLInLocalStorage
+            ? profileData
+            : { ...profileData, profileImageURL: profileImageURLInLocalStorage }
+        );
         setInitialProfileData(profileData);
         setCountry(countryData);
       } catch (err) {
@@ -83,22 +99,22 @@ export default function Profile() {
           Profile
         </h1>
         <div className="flex flex-col h-full w-full items-center space-y-10">
-          <div className="relative h-24 w-24">
+          <div className="relative h-32 w-32">
             {/* Profile image */}
             {profileData && profileData.profileImageURL ? (
               <img
                 src={profileData.profileImageURL.replace(
                   "upload/",
-                  "upload/w_100,h_100,c_fill/"
+                  "upload/w_128,h_128,c_fill/"
                 )}
                 alt="Profile Image"
-                className="h-24 w-24 rounded-full object-cover"
+                className="h-32 w-32 rounded-full object-cover"
               />
             ) : (
               <img
                 src="default.jpg"
                 alt="Default"
-                className="h-24 w-24 rounded-full object-cover"
+                className="h-32 w-32 rounded-full object-cover"
               />
             )}
 
@@ -143,7 +159,7 @@ export default function Profile() {
                 htmlFor="profileName"
                 className="text-teal-800 text-base font-medium"
               >
-                Profile Name
+                Name
               </label>
               <input
                 id="profilename"

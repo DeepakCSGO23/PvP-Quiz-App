@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Header from "../components/Header";
 const achievements = [
   {
@@ -23,7 +23,22 @@ const achievements = [
     description: "Win a game after being behind in points.",
   },
 ];
+
 export default function Achievements() {
+  const [profileName] = useState(localStorage.getItem("profileName"));
+  const [achievementsData, setAchievementsData] = useState([]);
+  useEffect(() => {
+    const getAchievementData = async () => {
+      const response = await fetch(
+        `http://localhost:5000/get-achievement-data?profileName=${profileName}`
+      );
+      const data = await response.json();
+      console.log(data);
+      setAchievementsData(data.achievements);
+    };
+    getAchievementData();
+  }, []);
+
   return (
     <div className="flex flex-col h-screen w-screen font-roboto overflow-hidden">
       <Header />
@@ -34,27 +49,34 @@ export default function Achievements() {
           Acheivements
         </h1>
         <ul className="space-y-4">
-          {achievements.map((achievement) => (
-            <li
-              key={achievement.id}
-              className="flex items-start justify-between"
-            >
-              <div className="flex flex-col">
-                <h2 className="text-xl text-teal-800 font-medium">
-                  {achievement.title}
-                </h2>
-                <p className="text-sm">{achievement.description}</p>
-              </div>
-              <div className="p-2 bg-[#474747] rounded-2xl">
-                <img
-                  src={`${achievement.title}.svg`}
-                  alt={achievement.title}
-                  height="20"
-                  width="20"
-                />
-              </div>
-            </li>
-          ))}
+          {achievements &&
+            achievements.map((achievement, index) => (
+              <li
+                key={achievement.id}
+                className="flex items-end justify-between"
+              >
+                <div className="flex flex-col">
+                  <h2 className="text-lg text-teal-800 font-medium">
+                    {achievement.title}
+                  </h2>
+                  <p className="text-sm">{achievement.description}</p>
+                </div>
+                <div
+                  className={`p-2 ${
+                    achievementsData && achievementsData[index] === true
+                      ? "bg-green-600"
+                      : "bg-[#474747]"
+                  }  rounded-2xl`}
+                >
+                  <img
+                    src={`${achievement.title}.svg`}
+                    alt={achievement.title}
+                    height="16"
+                    width="16"
+                  />
+                </div>
+              </li>
+            ))}
         </ul>
       </div>
     </div>

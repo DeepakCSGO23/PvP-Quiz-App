@@ -3,15 +3,16 @@ import { useWebSocket } from "../contexts/WebSocketContext"; // Adjust the path 
 import Header from "../components/Header";
 
 const Room = () => {
+  const url = new URLSearchParams(window.location.search);
   const { ws } = useWebSocket();
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
   const [questionTimer, setQuestionTimer] = useState(5);
   const [isMatchCompleted, setIsMatchCompleted] = useState(false);
-  const url = new URLSearchParams(window.location.search);
+
   const [roomId] = useState(url.get("id"));
-  const [playerName] = useState(url.get("playerName"));
+  const [profileName] = useState(url.get("profileName"));
   const [opponentTotalPoints, setOpponentTotalPoints] = useState(null);
   const [matchResult, setMatchResult] = useState(null);
   useEffect(() => {
@@ -125,7 +126,7 @@ const Room = () => {
         JSON.stringify({
           action: "player_completed",
           roomId: roomId,
-          playerName: playerName,
+          profileName: profileName,
           playerPoints: newTotalPoints,
         })
       );

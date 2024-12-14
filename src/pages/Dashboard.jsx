@@ -64,6 +64,7 @@ export default function Dashboard() {
   const handleFindingMatch = () => {
     // First send the player name details to the websocket server after clicking "Find Match" button
     if (ws) {
+      console.log(profileName);
       ws.send(
         JSON.stringify({
           action: "connect",

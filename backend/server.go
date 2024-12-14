@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 
@@ -46,6 +45,12 @@ type Profile struct {
 	ProfileImageURL string `json:"profileImageURL,omitempty"`
 }
 
+// Achievements struct to hold only the achievements completed so far by the user
+type Achievements struct {
+	// Achievements field which stores array of elements where each element can be of any type
+	Achievements []any `json:"achievements"`
+}
+
 // Response struct to hold the JSON response message used during sending json message during login
 type Response struct {
 	Message         string `json:"message,omitempty"`
@@ -63,7 +68,7 @@ type Response struct {
 type Message struct {
 	Action       string `json:"action"`
 	RoomId       string `json:"roomId"`
-	PlayerName   string `json:"profileName"`
+	ProfileName  string `json:"profileName"`
 	PlayerPoints uint16 `json:"playerPoints,omitempty"`
 	// This field will hold the total trophies a user got when he enters the server
 	TotalTrophies uint16 `json:"totalTrophies"`
@@ -72,7 +77,7 @@ type Message struct {
 // Defining a struct to hold both the websocket connection and its profile name
 type PlayerInfo struct {
 	Connection   *websocket.Conn
-	PlayerName   string
+	ProfileName  string
 	PlayerPoints int
 	// Will store the total trophies scored so far
 	TotalTrophies uint16 `json:"totalTrophies"`
@@ -193,6 +198,8 @@ func createProfile(w http.ResponseWriter, r *http.Request) {
 		"totalTrophies":   0,
 		"status":          "",
 		"country":         "",
+		// Initialize achievements as an empty array
+		"achievements": []interface{}{},
 	})
 	if err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
@@ -261,6 +268,30 @@ func getLeaderboardData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Getting achievements data
+
+func getAchievementData(w http.ResponseWriter, r *http.Request) {
+	profileName := r.URL.Query().Get("profileName")
+	if profileName == "" {
+		http.Error(w, "Missing profile name parameter", http.StatusBadRequest)
+	}
+	// achievements is a variable to store the document returned from database
+	var achievements Achievements
+	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}).Decode(&achievements)
+	if err != nil {
+		http.Error(w, "Failed to find achievement data", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// Serializing the achievements data into JSON format and writing it to the ResponseWriter
+	// First NewEncoder sets up and JSON encoder and the destination where the JSON need to go (Response w in this case)  nd write it to the writer w and Encode performs the actual serialization of the achievements structure
+	if err := json.NewEncoder(w).Encode(achievements); err != nil {
+		http.Error(w, "Failed to encode achievements", http.StatusInternalServerError)
+		return
+	}
+
+}
+
 // Handling websocket connections
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	// Upgrade initial GET request to websocket
@@ -285,7 +316,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			log.Println("Error parsing message:", err)
 		}
 		// Successfully parsed the json message from client (can be joining or leaving)
-		userPlayerName := jsonMessage.PlayerName
+		userPlayerName := jsonMessage.ProfileName
+		fmt.Printf("%s user name", userPlayerName)
 		userAction := jsonMessage.Action
 		playerTotalTrophies := jsonMessage.TotalTrophies
 
@@ -293,39 +325,36 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 		// Incase the action is join check the queue for any empty room if not create one and add the user to the room
 		if userAction == "connect" {
-			log.Printf("total trophies is %v", playerTotalTrophies)
 			// Traverse the queue and find a match for the user
 			for roomId, players := range playersInQueue {
 				// We found a match for the user
 				if len(players) == 1 {
 
 					//* We found a opponent now we have to check if the opponent is equally skilled
-					trophyDifference := math.Abs(float64(playerTotalTrophies) - float64(playersInQueue[roomId][0].TotalTrophies))
+					//trophyDifference := math.Abs(float64(playerTotalTrophies) - float64(playersInQueue[roomId][0].TotalTrophies))
 					// We found a perfect match
-					if trophyDifference <= 100 {
 
-						playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName, TotalTrophies: playerTotalTrophies})
-						matchFound = true
+					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName, TotalTrophies: playerTotalTrophies})
+					matchFound = true
 
-						// Send confirmation to two users that a match is found
-						for i := 0; i < 2; i++ {
-							log.Print("user name", userPlayerName)
-							if i == 0 {
-								// Send a message to first player in the room that match has been found
-								confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][1].PlayerName, roomId))
-								if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
-									log.Printf("Error sending match confirmation message to user\n")
-								}
-							} else {
-								// Send a message to second player in the room that match has been found
-								confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][0].PlayerName, roomId))
-								if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
-									log.Printf("Error sending match confirmation message to user\n")
-								}
+					// Send confirmation to two users that a match is found
+					for i := 0; i < 2; i++ {
+						if i == 0 {
+							// Send a message to first player in the room that match has been found
+							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][1].ProfileName, roomId))
+							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+								log.Printf("Error sending match confirmation message to user\n")
 							}
-
+						} else {
+							// Send a message to second player in the room that match has been found
+							confirmationMessage := []byte(fmt.Sprintf(`{"message":"Match found!","opponent":"%s","roomId":"%s"}`, playersInQueue[roomId][0].ProfileName, roomId))
+							if err := playersInQueue[roomId][i].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+								log.Printf("Error sending match confirmation message to user\n")
+							}
 						}
+
 					}
+
 				}
 			}
 			// We didnt found a match all room is filled so create a new room
@@ -336,7 +365,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Fatalf("Error generating random value: %v", err)
 					return
 				}
-				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, PlayerName: userPlayerName, TotalTrophies: playerTotalTrophies})
+				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName, TotalTrophies: playerTotalTrophies})
 			}
 		} else if userAction == "disconnect" {
 			// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
@@ -345,7 +374,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 				for _, player := range playerInfo {
 					// Remove the room from the queuing server
 					//! I guess the pointer in memory if freed
-					if player.PlayerName == userPlayerName {
+					if player.ProfileName == userPlayerName {
 						delete(playersInQueue, roomId)
 					}
 				}
@@ -353,10 +382,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		} else if userAction == "player_completed" {
 			// The player finishes a question
 			roomId := jsonMessage.RoomId
-			profileName := jsonMessage.PlayerName
+			profileName := jsonMessage.ProfileName
 			playerPoints := jsonMessage.PlayerPoints
+			fmt.Printf("room id: %s, profile name %s, player points :%d", roomId, profileName, playerPoints)
 			// The first player is the one who send the total points to the server
-			if playersInQueue[roomId][0].PlayerName == profileName {
+			if playersInQueue[roomId][0].ProfileName == profileName {
 				// We know have the total points scored by player1 so send the data to player2
 				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
 				if err := playersInQueue[roomId][1].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
@@ -456,8 +486,11 @@ func main() {
 	mux.HandleFunc("/update-profile-data", updateProfileData)
 	// Getting leaderboard data
 	mux.HandleFunc("/leaderboard-data", getLeaderboardData)
+	// For getting achievement data of a user
+	mux.HandleFunc("/get-achievement-data", getAchievementData)
 	// Run this function to store profile image in cloudinary
 	mux.HandleFunc("/update-profile-image", updateProfileImage)
+
 	// Start the server on port 5000
 	fmt.Println("Websocket server started on port 5000")
 	err := http.ListenAndServe(":5000", handler)
