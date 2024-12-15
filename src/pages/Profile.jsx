@@ -103,6 +103,7 @@ export default function Profile() {
             {/* Profile image */}
             {profileData && profileData.profileImageURL ? (
               <img
+                fetchPriority="high"
                 src={profileData.profileImageURL.replace(
                   "upload/",
                   "upload/w_128,h_128,c_fill/"
@@ -112,6 +113,7 @@ export default function Profile() {
               />
             ) : (
               <img
+                fetchPriority="high"
                 src="default.jpg"
                 alt="Default"
                 className="h-32 w-32 rounded-full object-cover"
@@ -120,7 +122,7 @@ export default function Profile() {
 
             {/* Upload icon */}
             <div className="absolute -bottom-3 left-14 bg-gray-100 h-8 w-8 rounded-full flex items-center justify-center shadow-md cursor-pointer">
-              <label htmlFor="profileImage">
+              <label htmlFor="profileimage">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -130,6 +132,7 @@ export default function Profile() {
                   className="w-5 h-5 text-gray-600"
                 >
                   <input
+                    id="profileimage"
                     onChange={handleUpdatingProfileImage}
                     type="file"
                     className=""
@@ -156,13 +159,13 @@ export default function Profile() {
           >
             <div className="flex flex-col">
               <label
-                htmlFor="profileName"
+                htmlFor="name"
                 className="text-teal-800 text-base font-medium"
               >
                 Name
               </label>
               <input
-                id="profilename"
+                id="name"
                 onChange={handleProfileDataChange}
                 type="text"
                 defaultValue={
@@ -206,7 +209,7 @@ export default function Profile() {
             </div>
             <button
               type="submit"
-              className="p-3 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500"
+              className="p-3 bg-green-700 text-white text-sm rounded-3xl hover:bg-green-600 duration-500"
             >
               Save
             </button>{" "}

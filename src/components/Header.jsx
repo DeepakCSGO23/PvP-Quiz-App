@@ -7,6 +7,7 @@ export default function Header() {
     <header className="relative flex flex-col h-32 font-roboto justify-center bg-gradient-to-l from-[#86B1A8] to-[#77918b]">
       <div className="flex items-center justify-center space-x-2">
         <img
+          fetchPriority="high"
           src="logo.png"
           alt="logo"
           height="60"
@@ -15,11 +16,11 @@ export default function Header() {
         />
         <div className="flex flex-col text-base">
           <h1>Duel of Wits</h1>
-          <h6 className="text-xs text-gray-200">Challenge Your Knowledge!</h6>
+          <h2 className="text-xs text-gray-200">Challenge Your Knowledge!</h2>
         </div>
       </div>
       <div
-        className={`absolute z-10 text-[#232222] text-lg top-0 right-0 flex flex-col items-center justify-start h-screen space-y-10 duration-300 ${
+        className={`absolute z-10 text-[#232222] text-base top-0 right-0 flex flex-col items-center justify-start h-screen space-y-10 duration-300 ${
           isHamburgerMenuOpen ? "w-full bg-[#bbceb7]" : "w-14"
         } `}
       >
@@ -100,7 +101,7 @@ export default function Header() {
 
             <Link
               to="/profile"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 Profile
@@ -108,7 +109,7 @@ export default function Header() {
             </Link>
             <Link
               to="/leaderboard"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 Leaderboard
@@ -116,7 +117,7 @@ export default function Header() {
             </Link>
             <Link
               to="/achievements"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 Achievements
@@ -124,7 +125,7 @@ export default function Header() {
             </Link>
             <Link
               to="/leaderboard"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 Feedback
@@ -132,7 +133,7 @@ export default function Header() {
             </Link>
             <Link
               to="/profile"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 History
@@ -140,7 +141,7 @@ export default function Header() {
             </Link>
             <Link
               to="/leaderboard"
-              className="w-[200%] rounded-3xl p-4 px-6 hover:bg-emerald-600 hover:text-white duration-300"
+              className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">
                 Logout

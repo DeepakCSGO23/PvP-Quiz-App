@@ -92,22 +92,28 @@ const Room = () => {
 
   // Run side-effects on question timer on first render and when the question changes
   useEffect(() => {
-    // The interval runs every 1 second
     const intervalId = setInterval(() => {
+      // Question timer starts from 5 if the timer count is not 0 then decrement timer by 1 else if the timer is 0 then reset question timer to 5
       setQuestionTimer((prevTimer) => {
         if (prevTimer === 0) {
-          setCurrentQuestionIndex((prevIndex) =>
-            prevIndex < questions.length - 1 ? prevIndex + 1 : prevIndex
-          );
-          return 5; // Reset timer to initial value for the next question
+          setQuestionTimer(5);
+          // Increment the question index
+          setCurrentQuestionIndex((prevIndex) => {
+            const nextIndex = prevIndex + 1;
+            if (nextIndex < questions.length) {
+              return nextIndex;
+            }
+            // Clear the previously created interval
+            clearInterval(intervalId);
+            return prevIndex;
+          });
         }
         return prevTimer - 1;
       });
     }, 1000);
 
-    // Clear interval on unmount
     return () => clearInterval(intervalId);
-  }, [currentQuestionIndex]); // Only re-run effect when currentQuestionIndex changes
+  }, [questions.length]);
 
   const handleOptionClick = (selectedOption) => {
     const currentQuestion = questions[currentQuestionIndex];
@@ -155,7 +161,7 @@ const Room = () => {
   return (
     <div className="flex flex-col h-screen w-screen text-white font-roboto">
       <Header />
-      <div className="flex flex-col h-full w-full bg-[#C5E6DF] text-black items-center justify-center dashboard p-20">
+      <div className="flex flex-col h-full w-full bg-[#C5E6DF] text-black items-center justify-center">
         {/* Render the current question */}
         {!isMatchCompleted ? (
           questions.length > 0 && (
@@ -163,12 +169,13 @@ const Room = () => {
               {/* Clock timer for question */}
               {questionTimer}
               {/* Question */}
-              <p>
+              {/* Highest Width so this is the decider to items center / justify center */}
+              <p className="w-60">
                 {currentQuestionIndex + 1}.{" "}
                 {questions[currentQuestionIndex].question}
               </p>
               {/* Options */}
-              <div className="flex space-x-4">
+              <div className="flex flex-col space-y-4">
                 {/* Include both correct and incorrect answers and shuffle them */}
                 {[
                   ...questions[currentQuestionIndex].incorrect_answers,
@@ -177,9 +184,9 @@ const Room = () => {
                   <button
                     key={index}
                     onClick={() => handleOptionClick(option)}
-                    className="p-4 bg-gray-800 text-white rounded-3xl hover:bg-green-400 duration-300"
+                    className="p-4 text-left bg-gray-800 text-white rounded-3xl hover:bg-green-400 duration-300"
                   >
-                    {option}
+                    <span>{index + 1}.</span> {option}
                   </button>
                 ))}
               </div>
@@ -197,15 +204,15 @@ const Room = () => {
           </h1>
         )}
         {matchResult === "won" ? (
-          <div className="absolute h-screen w-screen flex items-center justify-center bg-green-600">
+          <div className="absolute h-fit w-screen flex items-center justify-center bg-green-600">
             <h1 className="text-6xl text-white">You Won!</h1>
           </div>
         ) : matchResult === "lost" ? (
-          <div className="absolute h-screen w-screen flex items-center justify-center bg-red-600">
+          <div className="absolute h-fit w-screen flex items-center justify-center bg-red-600">
             <h1 className="text-6xl text-white">You Lost!</h1>
           </div>
         ) : matchResult === "tie" ? (
-          <div className="absolute h-screen w-screen flex items-center justify-center bg-yellow-600">
+          <div className="absolute h-fit w-screen flex items-center justify-center bg-yellow-600">
             <h1 className="text-6xl text-white">It's a Tie!</h1>
           </div>
         ) : null}

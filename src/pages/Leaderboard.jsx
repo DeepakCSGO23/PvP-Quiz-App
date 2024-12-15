@@ -31,7 +31,7 @@ export default function Leaderboard() {
               leaderboardList.slice(0, 3).map((item, index) => (
                 <div
                   key={item.profileName}
-                  className={`relative bg-[#118A7C] ${
+                  className={`relative bg-[#0b574e] ${
                     index === 1 ? "h-56" : "h-40"
                   } w-1/3 rounded-t-3xl flex flex-col items-center justify-center text-white text-xs`}
                 >
@@ -54,7 +54,7 @@ export default function Leaderboard() {
               ))}
           </div>
           {/* remaining places */}
-          <div className="bg-[#118A7C] h-full flex flex-col items-center text-xs text-white space-y-2">
+          <div className="bg-[#0b574e] h-full flex flex-col items-center text-xs text-white space-y-2">
             {leaderboardList &&
               leaderboardList.length > 3 &&
               leaderboardList.slice(3).map((item, index) => (

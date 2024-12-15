@@ -56,15 +56,15 @@ export default function Achievements() {
                 className="flex items-end justify-between"
               >
                 <div className="flex flex-col">
-                  <h2 className="text-lg text-teal-800 font-medium">
+                  <h1 className="text-lg text-teal-800 font-semibold">
                     {achievement.title}
-                  </h2>
+                  </h1>
                   <p className="text-sm">{achievement.description}</p>
                 </div>
                 <div
                   className={`p-2 ${
                     achievementsData && achievementsData[index] === true
-                      ? "bg-green-600"
+                      ? "bg-green-700"
                       : "bg-[#474747]"
                   }  rounded-2xl`}
                 >

@@ -1,24 +1,19 @@
+/* Reduced 350kb to 71kb and 74kb to 22kb */
 @font-face {
   font-family: font-roboto;
-  src: url("fonts/RobotoCondensed-VariableFont_wght.ttf");
+  src: url("fonts/RobotoCondensed-Regular.woff2");
 }
 .font-roboto {
   font-family: font-roboto;
 }
 @font-face {
   font-family: font-bebas-neue;
-  src: url("fonts/BebasNeue-Regular.ttf");
+  src: url("fonts/BebasNeue-Regular.woff2");
 }
 .font-bebas-neue {
   font-family: font-bebas-neue;
 }
-.signup,
-.login,
-.dashboard {
-  background-image: url("grains.jpg");
-  background-repeat: no-repeat;
-  background-size: contain;
-}
+
 input,
 select {
   caret-color: darkmagenta;

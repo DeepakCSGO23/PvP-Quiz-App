@@ -96,15 +96,15 @@ export default function Dashboard() {
       >
         {isMatchFound ? (
           // Match found now show who is the opponent
-          <div className="flex flex-col">
-            <span className="text-6xl">{joiningRoomCountDown}</span>
-            <h1>Match found</h1>
-            <div className="flex">{opponentName}</div>
+          <div className="flex flex-col border-2 items-center justify-center border-black h-60 w-60 rounded-full">
+            <span className="text-4xl">{joiningRoomCountDown}</span>
+            <h1>Match found !</h1>
+            <div className="flex font-semibold text-base">{opponentName}</div>
           </div>
         ) : isInQueue ? (
           <button
             type="button"
-            className="shadow-2xl flex items-center p-4 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
+            className="shadow-2xl flex items-center p-4 bg-green-700 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
           >
             Finding Match {inQueueCountUp}
           </button>
@@ -112,7 +112,7 @@ export default function Dashboard() {
           <button
             onClick={handleFindingMatch}
             type="button"
-            className="shadow-2xl flex items-center p-4 bg-green-500 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
+            className="shadow-2xl flex items-center p-4 bg-green-700 text-white text-sm rounded-3xl hover:bg-green-600 duration-500 cursor-pointer"
           >
             <img
               src="search.svg"
