@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/admin"
@@ -21,6 +23,67 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// Maximum 10 request in a minute
+const (
+	requestLimit = 10
+	timeWindow   = 60 * time.Second
+)
+
+var (
+	clientRequests = make(map[string][]time.Time)
+	// using Mutex to synchronize access to the map
+	/*If there are multiple HTTP request Go's HTTP server will handle multiple requests at the same time so to prevent issues when
+	multiple requests are accessing shared resources like a map and to prevent race conditions*/
+	mu sync.Mutex
+)
+
+// Rate limiter middleware configuration
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := r.RemoteAddr
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Get the current time
+		currentTime := time.Now()
+
+		// Fetch the timestamps for the client
+		timestamps, exists := clientRequests[clientIP]
+
+		// If no previous requests by this client, allow the request
+		if !exists {
+			clientRequests[clientIP] = []time.Time{currentTime}
+			next.ServeHTTP(w, r)
+			return
+		}
+		// * Checks how many request a user sends in the last 1 minute
+		// Clean up old timestamps that are outside the time window
+		var validTimestamps []time.Time
+		for _, timestamp := range timestamps {
+			// Only keep the timestamps within the time window
+			if currentTime.Sub(timestamp) < timeWindow {
+				validTimestamps = append(validTimestamps, timestamp)
+			}
+		}
+
+		// If the number of valid timestamps exceeds the rate limit, block the request
+		// ! check this later (why can't i send text as response)
+		if len(validTimestamps) >= requestLimit {
+			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			return
+		}
+
+		// Add the current request's timestamp to the list of valid timestamps
+		validTimestamps = append(validTimestamps, currentTime)
+
+		// Update the client's request timestamps
+		clientRequests[clientIP] = validTimestamps
+
+		// Pass it to the next middleware function handler i.e CORS middleware
+		next.ServeHTTP(w, r)
+	})
+}
 
 // Upgrader configures the upgrade from HTTP to Websocket
 var upgrader = websocket.Upgrader{
@@ -39,7 +102,6 @@ var collection *mongo.Collection
 type Profile struct {
 	ProfileName     string `json:"profileName"`
 	ProfilePassword string `json:"profilePassword"`
-	TotalTrophies   uint16 `json:"totalTrophies"`
 	Status          string `json:"status,omitempty"`
 	Country         string `json:"country,omitempty"`
 	ProfileImageURL string `json:"profileImageURL,omitempty"`
@@ -58,7 +120,6 @@ type Response struct {
 	ProfilePassword string `json:"profilePassword,omitempty"`
 	// You should use Omitempty because this will skip this field if not set
 	// If we use omitempty that field will be not included in the final json if the field is empty
-	TotalTrophies   uint16 `json:"totalTrophies"`
 	Status          string `json:"status,omitempty"`
 	Country         string `json:"country,omitempty"`
 	ProfileImageURL string `json:"profileImageURL,omitempty"`
@@ -66,12 +127,12 @@ type Response struct {
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
 type Message struct {
-	Action       string `json:"action"`
-	RoomId       string `json:"roomId"`
-	ProfileName  string `json:"profileName"`
-	PlayerPoints uint16 `json:"playerPoints,omitempty"`
-	// This field will hold the total trophies a user got when he enters the server
-	TotalTrophies uint16 `json:"totalTrophies"`
+	Action         string `json:"action"`
+	RoomId         string `json:"roomId"`
+	ProfileName    string `json:"profileName"`
+	PlayerPoints   uint16 `json:"playerPoints,omitempty"`
+	OpponentName   string `json:"opponentName,omitempty"`
+	OpponentPoints uint16 `json:"opponentTotalPoints,omitempty"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
@@ -79,8 +140,6 @@ type PlayerInfo struct {
 	Connection   *websocket.Conn
 	ProfileName  string
 	PlayerPoints int
-	// Will store the total trophies scored so far
-	TotalTrophies uint16 `json:"totalTrophies"`
 }
 
 // A map to store room id as key and array of 2 strings as profile name of two players
@@ -173,7 +232,6 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		Message:         "taken",
 		ProfileName:     existingProfile.ProfileName,
 		ProfilePassword: existingProfile.ProfilePassword,
-		TotalTrophies:   existingProfile.TotalTrophies,
 		Status:          existingProfile.Status,
 		Country:         existingProfile.Country,
 		ProfileImageURL: profileImageURL,
@@ -195,7 +253,7 @@ func createProfile(w http.ResponseWriter, r *http.Request) {
 	_, err = collection.InsertOne(context.TODO(), bson.M{
 		"profileName":     profile.ProfileName,
 		"profilePassword": profile.ProfilePassword,
-		"totalTrophies":   0,
+		"trophies":        0,
 		"status":          "",
 		"country":         "",
 		// Initialize achievements as an empty array
@@ -247,7 +305,7 @@ func updateProfileData(w http.ResponseWriter, r *http.Request) {
 
 // For getting leaderboard data
 func getLeaderboardData(w http.ResponseWriter, r *http.Request) {
-	opts := options.Find().SetSort(bson.D{{"totalTrophies", -1}}).SetLimit(10)
+	opts := options.Find().SetSort(bson.D{{"trohpies", -1}}).SetLimit(10)
 	// Retrieves documents
 	cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
 	if err != nil {
@@ -317,9 +375,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 		// Successfully parsed the json message from client (can be joining or leaving)
 		userPlayerName := jsonMessage.ProfileName
-		fmt.Printf("%s user name", userPlayerName)
+
 		userAction := jsonMessage.Action
-		playerTotalTrophies := jsonMessage.TotalTrophies
 
 		var matchFound bool = false
 
@@ -333,8 +390,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					//* We found a opponent now we have to check if the opponent is equally skilled
 					//trophyDifference := math.Abs(float64(playerTotalTrophies) - float64(playersInQueue[roomId][0].TotalTrophies))
 					// We found a perfect match
-
-					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName, TotalTrophies: playerTotalTrophies})
+					// ! We dont need skill based matching as of now
+					playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName})
 					matchFound = true
 
 					// Send confirmation to two users that a match is found
@@ -365,7 +422,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 					log.Fatalf("Error generating random value: %v", err)
 					return
 				}
-				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName, TotalTrophies: playerTotalTrophies})
+				playersInQueue[roomId] = append(playersInQueue[roomId], PlayerInfo{Connection: ws, ProfileName: userPlayerName})
 			}
 		} else if userAction == "disconnect" {
 			// When users rage quits or when the game is finished in both cases completely delete the room and pick your winner
@@ -384,28 +441,135 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			roomId := jsonMessage.RoomId
 			profileName := jsonMessage.ProfileName
 			playerPoints := jsonMessage.PlayerPoints
-			fmt.Printf("room id: %s, profile name %s, player points :%d", roomId, profileName, playerPoints)
 			// The first player is the one who send the total points to the server
 			if playersInQueue[roomId][0].ProfileName == profileName {
 				// We know have the total points scored by player1 so send the data to player2
-				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
+				confirmationMessage := []byte(fmt.Sprintf(`{"opponentTotalPoints":"%d"}`, playerPoints))
 				if err := playersInQueue[roomId][1].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
 					log.Printf("Error sending message to opponent\n")
 				}
 			} else {
 				// We know have the total points scored by player2 so send the data to player1
-				confirmationMessage := []byte(fmt.Sprintf(`{"opponent_total_points":"%d"}`, playerPoints))
+				confirmationMessage := []byte(fmt.Sprintf(`{"opponentTotalPoints":"%d"}`, playerPoints))
 				if err := playersInQueue[roomId][0].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
 					log.Printf("Error sending message to opponent\n")
 				}
 			}
 		} else if userAction == "match_completed" {
-			// When the match is completed remove the room from the server
+			// * UPDATES TROPHY ✔️
+			// * UPDATES WIN COUNT ✔️
+			// * CHECKS - Answer all questions in a game correctly ✔️
+			/* Only process the json data send by the first user who hits the server */
 			roomId := jsonMessage.RoomId
-			delete(playersInQueue, roomId)
+			playerPoints := jsonMessage.PlayerPoints
+			opponentName := jsonMessage.OpponentName
+			opponentTotalPoints := jsonMessage.OpponentPoints
+			_, exits := playersInQueue[roomId]
+
+			if exits {
+
+				if playerPoints > opponentTotalPoints {
+					if playerPoints == 100 {
+						updateAchievementData(userPlayerName, true, opponentName, false, w)
+					} else {
+						updateAchievementData(userPlayerName, false, opponentName, false, w)
+					}
+
+				} else if playerPoints < opponentTotalPoints {
+					if opponentTotalPoints == 100 {
+						updateAchievementData(opponentName, true, userPlayerName, false, w)
+					} else {
+						updateAchievementData(opponentName, false, userPlayerName, false, w)
+					}
+				} else {
+
+					if playerPoints == 100 && opponentTotalPoints == 100 {
+						updateAchievementData(userPlayerName, true, opponentName, true, w)
+						updateAchievementData(opponentName, true, userPlayerName, true, w)
+					} else if playerPoints == 100 {
+						updateAchievementData(userPlayerName, true, opponentName, true, w)
+					} else if opponentTotalPoints == 100 {
+						updateAchievementData(opponentName, true, userPlayerName, true, w)
+					} else {
+						updateAchievementData(opponentName, false, userPlayerName, true, w)
+					}
+
+				}
+				delete(playersInQueue, roomId)
+			}
 		}
 	}
 }
+
+func updateAchievementData(winner string, isPerfectScore bool, loser string, isMatchDrawn bool, w http.ResponseWriter) {
+	// win +5 lost -3 draw +0
+
+	var increment, decrement int16
+
+	// Updating Trophies based on match result
+	if isMatchDrawn {
+		increment = 0
+		decrement = 0
+	} else {
+		increment = 5
+		decrement = -3
+	}
+
+	// Immeditaley send the response before starting go routines (not get hijacked)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Trophy update request is being processed..."))
+
+	// Go routines is called immediately which creates a new gorountine and runs mongodb operation in the background without blocking the main execution thread
+	go func() {
+
+		// Increment trophy for the winning player
+		filter := bson.M{"profileName": winner}
+		// We have to add trophies field irrespective of if the match is drawn or not since we have already calculated the trophy boost for drawing or not drawing (winning/losing)
+		update := bson.M{
+			"$inc": bson.M{
+				"trophies": increment,
+			},
+		}
+		// $inc is key its value is another map containing key as ex : trophies and 5 as their value
+		if !isMatchDrawn {
+			// We are appending the field achievements.0 to the existing $inc map within the update variable
+			update["$inc"].(bson.M)["achievements.0"] = 1
+		}
+
+		// Happens only with the winning player or drawn player so check both players incase drawn
+		// Check if any players scored everything correctly (perfect score)
+		if isPerfectScore {
+			// Always the winner parameter (winner or drawn) is the one who always has the probability to score 100 points even if he drawn the winner (left parameter) is the one to have perfect score
+			update["$set"].(bson.M)["achievements.1"] = true
+		}
+
+		// First define the err variable
+		_, err := collection.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			fmt.Printf("Error when updating trophies")
+			//http.Error(w, "Failed to update trophies", http.StatusInternalServerError)
+
+		}
+	}()
+	go func() {
+		// Decrement trophy for the losing player
+		filter := bson.M{"profileName": loser}
+		update := bson.M{
+			"$inc": bson.M{
+				"trophies": decrement,
+			},
+		}
+		// Initializing a new value to the err variable
+		_, err := collection.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			fmt.Printf("Error when updating trophies")
+			//http.Error(w, "Failed to update trophies", http.StatusInternalServerError)
+
+		}
+	}()
+
+}
+
 func updateProfileImage(w http.ResponseWriter, r *http.Request) {
 	// Parsing the multipart form (2mb max size)
 	err := r.ParseMultipartForm(2 << 20)
@@ -462,34 +626,37 @@ func generateRandomHex(length int) (string, error) {
 	// Convert the bytes to a hexadecimal string
 	return hex.EncodeToString(randomBytes)[:length], nil
 }
+
 func main() {
 
 	// Connect to MongoDB
 	connectMongoDB()
 	mux := http.NewServeMux()
 	// Configure CORS to allow requests from your frontend
-	cors := cors.New(cors.Options{
+	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173"},
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type"},
 		AllowCredentials: true,
 	})
-	// Setting up CORS
-	handler := cors.Handler(mux)
+	// Setting up CORS middleware
+	// First Rate limit check then CORS middleware is exeuted
+	handler := corsHandler.Handler(mux)
+
 	// Websocket connection
 	mux.HandleFunc("/ws", handleConnections)
 	// Setting HTTP endpoint for saving profile data
-	mux.HandleFunc("/create-profile", createProfile)
+	mux.Handle("/create-profile", rateLimitMiddleware(http.HandlerFunc(createProfile)))
 	// Setting HTTP endpoint for checking profile name (used to check if the username exists or not while creating account and when during login auth)
-	mux.HandleFunc("/check-profile", checkProfileNameExists)
+	mux.Handle("/check-profile", rateLimitMiddleware(http.HandlerFunc(checkProfileNameExists)))
 	// Updating profile data
-	mux.HandleFunc("/update-profile-data", updateProfileData)
+	mux.Handle("/update-profile-data", rateLimitMiddleware(http.HandlerFunc(updateProfileData)))
 	// Getting leaderboard data
-	mux.HandleFunc("/leaderboard-data", getLeaderboardData)
+	mux.Handle("/leaderboard-data", rateLimitMiddleware(http.HandlerFunc(getLeaderboardData)))
 	// For getting achievement data of a user
-	mux.HandleFunc("/get-achievement-data", getAchievementData)
+	mux.Handle("/get-achievement-data", rateLimitMiddleware(http.HandlerFunc(getAchievementData)))
 	// Run this function to store profile image in cloudinary
-	mux.HandleFunc("/update-profile-image", updateProfileImage)
+	mux.Handle("/update-profile-image", rateLimitMiddleware(http.HandlerFunc(updateProfileImage)))
 
 	// Start the server on port 5000
 	fmt.Println("Websocket server started on port 5000")

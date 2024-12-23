@@ -22,14 +22,16 @@ const Room = () => {
         const data = JSON.parse(e.data);
         console.log("Message received in Room:", data);
         // We received opponent total points
-        setOpponentTotalPoints(data.opponent_total_points);
+        setOpponentTotalPoints(parseInt(data.opponentTotalPoints));
       };
     }
     return () => {
       // Optional cleanup if needed
     };
   }, [ws]);
-
+  useEffect(() => {
+    console.log("opponentTotalPoints updated:", opponentTotalPoints);
+  }, [opponentTotalPoints]);
   useEffect(() => {
     // const fetchQuestions = async () => {
     //   const response = await fetch(
@@ -151,9 +153,21 @@ const Room = () => {
       } else {
         setMatchResult("tie");
       }
+
       // Store the points scored in the quiz
       // Ending the match removing the players from server
-      ws.send(JSON.stringify({ action: "match_completed", roomId: roomId }));
+      ws.send(
+        JSON.stringify({
+          action: "match_completed",
+          roomId: roomId,
+
+          profileName: profileName,
+          playerPoints: totalPoints,
+
+          opponentName: "Mania",
+          opponentTotalPoints: opponentTotalPoints,
+        })
+      );
       // Close the websocket server
       ws.close();
     }

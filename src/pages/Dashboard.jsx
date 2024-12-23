@@ -34,7 +34,7 @@ export default function Dashboard() {
         console.error("Error fetching trohpies from database", err);
       }
     };
-    fetchTotalTrophies();
+    //fetchTotalTrophies();
   }, []);
   useEffect(() => {
     // Log ws whenever it changes
@@ -96,10 +96,15 @@ export default function Dashboard() {
       >
         {isMatchFound ? (
           // Match found now show who is the opponent
-          <div className="flex flex-col border-2 items-center justify-center border-black h-60 w-60 rounded-full">
-            <span className="text-4xl">{joiningRoomCountDown}</span>
-            <h1>Match found !</h1>
-            <div className="flex font-semibold text-base">{opponentName}</div>
+          <div className="flex flex-col border-2 items-center justify-center border-black h-60 w-60 rounded-full text-gray-800 space-y-2">
+            <h1 className="text-2xl font-bold">Match Found!</h1>
+            <span className="text-4xl font-bold">{joiningRoomCountDown}</span>
+            <h2 className="text-lg font-medium">Prepare yourself!</h2>
+            <div className="flex text-lg space-x-1">
+              <span>🤜</span>
+              <span className="italic">vs</span>
+              <span className="font-bold">🤛 {opponentName}</span>
+            </div>
           </div>
         ) : isInQueue ? (
           <button
