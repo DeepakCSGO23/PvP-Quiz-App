@@ -1,0 +1,78 @@
+go func() {
+	filter := bson.M{"profileName": winner}
+	update := bson.M{
+		"$inc": bson.M{
+			"trophies": trophiesGained,
+		},
+	}
+
+	if !isMatchDrawn {
+		if inc, ok := update["$inc"].(bson.M); ok {
+			inc["achievements.0"] = 1
+		} else {
+			// Handle the case where $inc is not a bson.M
+			update["$inc"] = bson.M{
+				"achievements.0": 1,
+			}
+		}
+	}
+
+	if isPerfectScore {
+		if set, ok := update["$set"].(bson.M); ok {
+			set["achievements.1"] = true
+		} else {
+			update["$set"] = bson.M{
+				"achievements.1": true,
+			}
+		}
+	}
+
+	if IsLightingReflexesCompleted {
+		if set, ok := update["$set"].(bson.M); ok {
+			set["achievements.2"] = true
+		} else {
+			update["$set"] = bson.M{
+				"achievements.2": true,
+			}
+		}
+	}
+
+	_, err := collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		fmt.Printf("Error when updating trophies")
+	}
+}()
+
+go func() {
+	filter := bson.M{"profileName": loser}
+	update := bson.M{
+		"$inc": bson.M{
+			"trophies": trophiesLost,
+		},
+	}
+
+	if isPerfectScore {
+		if set, ok := update["$set"].(bson.M); ok {
+			set["achievements.1"] = true
+		} else {
+			update["$set"] = bson.M{
+				"achievements.1": true,
+			}
+		}
+	}
+
+	if IsLightingReflexesCompleted {
+		if set, ok := update["$set"].(bson.M); ok {
+			set["achievements.2"] = true
+		} else {
+			update["$set"] = bson.M{
+				"achievements.2": true,
+			}
+		}
+	}
+
+	_, err := collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		fmt.Printf("Error when updating trophies")
+	}
+}()

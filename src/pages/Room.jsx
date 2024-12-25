@@ -7,12 +7,15 @@ const Room = () => {
   const { ws } = useWebSocket();
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [totalPoints, setTotalPoints] = useState(0);
+  // Initializing the array with 0
+  const [totalPoints, setTotalPoints] = useState([0]);
   const [questionTimer, setQuestionTimer] = useState(5);
   const [isMatchCompleted, setIsMatchCompleted] = useState(false);
-
+  const [isLightingReflexesCompleted, setIsLightningReflexesCompleted] =
+    useState(false);
   const [roomId] = useState(url.get("id"));
   const [profileName] = useState(url.get("profileName"));
+  console.log(url.get("profileName"));
   const [opponentTotalPoints, setOpponentTotalPoints] = useState(null);
   const [matchResult, setMatchResult] = useState(null);
   useEffect(() => {
@@ -20,7 +23,6 @@ const Room = () => {
       // Handle incoming messages or perform actions
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
-        console.log("Message received in Room:", data);
         // We received opponent total points
         setOpponentTotalPoints(parseInt(data.opponentTotalPoints));
       };
@@ -29,9 +31,7 @@ const Room = () => {
       // Optional cleanup if needed
     };
   }, [ws]);
-  useEffect(() => {
-    console.log("opponentTotalPoints updated:", opponentTotalPoints);
-  }, [opponentTotalPoints]);
+
   useEffect(() => {
     // const fetchQuestions = async () => {
     //   const response = await fetch(
@@ -118,30 +118,43 @@ const Room = () => {
   }, [questions.length]);
 
   const handleOptionClick = (selectedOption) => {
+    // Current question
     const currentQuestion = questions[currentQuestionIndex];
+
+    const isCorrectOption =
+      currentQuestion.correct_answer === selectedOption ? true : false;
+    // Gets the last recorded point
+    const previousPoint = totalPoints[totalPoints.length - 1];
     // Tracking points locally
-    const newTotalPoints =
-      selectedOption === currentQuestion.correct_answer
-        ? totalPoints + 20
-        : totalPoints;
-    setTotalPoints(newTotalPoints);
+    // Add the previously recoreded points with 20 to get new current point
+    const newTotalPoint = isCorrectOption ? previousPoint + 20 : previousPoint;
 
     // Move to the next question
     if (currentQuestionIndex < questions.length - 1) {
+      // Before moving the index & resetting the time counter check the time taken to select the correct option
+      // Anwer is correct and answer with 2 seconds remaining = within 3 seconds
+      if (isCorrectOption && questionTimer < 2) {
+        setIsLightningReflexesCompleted(true);
+      }
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
+      console.log(newTotalPoint, typeof newTotalPoint);
+      // Send these information after completing all the questions
+      // * We need to send the profile name and player's points data once the player completes the quiz to the websocket server since the opponent needs that data once both player gets the confirmation (gets the opponent's score it is marked as match completed this is where the achivements data process happens)
       ws.send(
         JSON.stringify({
           action: "player_completed",
           roomId: roomId,
           profileName: profileName,
-          playerPoints: newTotalPoints,
+          playerPoints: newTotalPoint,
         })
       );
       // Marking match as completed
       setIsMatchCompleted(true);
     }
+    setTotalPoints((prev) => [...prev, newTotalPoint]);
   };
+  // ! CHECK DEPENEDENCIES
   // Run sideeffect whenever the match is completed and when we get the opponent's points
   useEffect(() => {
     // You have to complete the match and also need the opponent's total points
@@ -153,19 +166,20 @@ const Room = () => {
       } else {
         setMatchResult("tie");
       }
-
       // Store the points scored in the quiz
       // Ending the match removing the players from server
+      // * If the player disconnects mid game cancel the achievements he made in the game
+      console.log(totalPoints[totalPoints.length - 1]);
       ws.send(
         JSON.stringify({
           action: "match_completed",
           roomId: roomId,
-
           profileName: profileName,
-          playerPoints: totalPoints,
-
+          playerPoints: totalPoints[totalPoints.length - 1],
           opponentName: "Mania",
           opponentTotalPoints: opponentTotalPoints,
+          isPerfectScore: totalPoints === 100 ? true : false,
+          isLightingReflexesCompleted: isLightingReflexesCompleted,
         })
       );
       // Close the websocket server

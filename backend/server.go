@@ -70,7 +70,7 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 		// If the number of valid timestamps exceeds the rate limit, block the request
 		// ! check this later (why can't i send text as response)
 		if len(validTimestamps) >= requestLimit {
-			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			http.Error(w, "Rate limit exceeded. Please try atrophiesGained later.", http.StatusTooManyRequests)
 			return
 		}
 
@@ -127,12 +127,16 @@ type Response struct {
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
 type Message struct {
-	Action         string `json:"action"`
-	RoomId         string `json:"roomId"`
-	ProfileName    string `json:"profileName"`
-	PlayerPoints   uint16 `json:"playerPoints,omitempty"`
-	OpponentName   string `json:"opponentName,omitempty"`
-	OpponentPoints uint16 `json:"opponentTotalPoints,omitempty"`
+	Action string `json:"action"`
+	// If there is no roomId key from json just omit it dont create a new field and assign 0 dont do that just omit it
+	RoomId                      string `json:"roomId,omitempty"`
+	ProfileName                 string `json:"profileName"`
+	PlayerPoints                uint16 `json:"playerPoints,omitempty"`
+	OpponentName                string `json:"opponentName,omitempty"`
+	OpponentPoints              uint16 `json:"opponentTotalPoints,omitempty"`
+	TimeTaken                   uint16 `json:"timeTaken,omitempty"`
+	IsPerfectScore              bool   `json:"isPerfectScore,omitempty"`
+	IsLightingReflexesCompleted bool   `json:"isLightingReflexesCompleted,omitempty"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
@@ -370,9 +374,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		var jsonMessage Message
+
 		if err := json.Unmarshal(message, &jsonMessage); err != nil {
 			log.Println("Error parsing message:", err)
 		}
+
 		// Successfully parsed the json message from client (can be joining or leaving)
 		userPlayerName := jsonMessage.ProfileName
 
@@ -437,7 +443,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else if userAction == "player_completed" {
-			// The player finishes a question
+			// The player finishes all the questions and is used to send the player's total points to the opponent
 			roomId := jsonMessage.RoomId
 			profileName := jsonMessage.ProfileName
 			playerPoints := jsonMessage.PlayerPoints
@@ -456,44 +462,26 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else if userAction == "match_completed" {
-			// * UPDATES TROPHY ✔️
-			// * UPDATES WIN COUNT ✔️
-			// * CHECKS - Answer all questions in a game correctly ✔️
+
 			/* Only process the json data send by the first user who hits the server */
 			roomId := jsonMessage.RoomId
 			playerPoints := jsonMessage.PlayerPoints
 			opponentName := jsonMessage.OpponentName
 			opponentTotalPoints := jsonMessage.OpponentPoints
+			// * Calculated from frontend
+			isPerfectScore := jsonMessage.IsPerfectScore
+			// * Calculated from frontend
+			isLightingReflexesCompleted := jsonMessage.IsLightingReflexesCompleted
+
 			_, exits := playersInQueue[roomId]
-
+			//! Two player cannot process this simultaneoulsy i assume
 			if exits {
-
 				if playerPoints > opponentTotalPoints {
-					if playerPoints == 100 {
-						updateAchievementData(userPlayerName, true, opponentName, false, w)
-					} else {
-						updateAchievementData(userPlayerName, false, opponentName, false, w)
-					}
-
+					updateAchievementData(userPlayerName, isPerfectScore, opponentName, false, isLightingReflexesCompleted, w)
 				} else if playerPoints < opponentTotalPoints {
-					if opponentTotalPoints == 100 {
-						updateAchievementData(opponentName, true, userPlayerName, false, w)
-					} else {
-						updateAchievementData(opponentName, false, userPlayerName, false, w)
-					}
+					updateAchievementData(opponentName, isPerfectScore, userPlayerName, false, isLightingReflexesCompleted, w)
 				} else {
-
-					if playerPoints == 100 && opponentTotalPoints == 100 {
-						updateAchievementData(userPlayerName, true, opponentName, true, w)
-						updateAchievementData(opponentName, true, userPlayerName, true, w)
-					} else if playerPoints == 100 {
-						updateAchievementData(userPlayerName, true, opponentName, true, w)
-					} else if opponentTotalPoints == 100 {
-						updateAchievementData(opponentName, true, userPlayerName, true, w)
-					} else {
-						updateAchievementData(opponentName, false, userPlayerName, true, w)
-					}
-
+					updateAchievementData(userPlayerName, isPerfectScore, opponentName, true, isLightingReflexesCompleted, w)
 				}
 				delete(playersInQueue, roomId)
 			}
@@ -501,18 +489,19 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func updateAchievementData(winner string, isPerfectScore bool, loser string, isMatchDrawn bool, w http.ResponseWriter) {
-	// win +5 lost -3 draw +0
+func updateAchievementData(winner string, isPerfectScore bool, loser string, isMatchDrawn bool, IsLightingReflexesCompleted bool, w http.ResponseWriter) {
 
-	var increment, decrement int16
+	// IsPerfectScore and IsLightingReflexesCompleted can happen with any player losing or winning player
+
+	var trophiesGained, trophiesLost int16
 
 	// Updating Trophies based on match result
 	if isMatchDrawn {
-		increment = 0
-		decrement = 0
+		trophiesGained = 0
+		trophiesLost = 0
 	} else {
-		increment = 5
-		decrement = -3
+		trophiesGained = 5
+		trophiesLost = -3
 	}
 
 	// Immeditaley send the response before starting go routines (not get hijacked)
@@ -521,50 +510,78 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 
 	// Go routines is called immediately which creates a new gorountine and runs mongodb operation in the background without blocking the main execution thread
 	go func() {
-
-		// Increment trophy for the winning player
 		filter := bson.M{"profileName": winner}
-		// We have to add trophies field irrespective of if the match is drawn or not since we have already calculated the trophy boost for drawing or not drawing (winning/losing)
 		update := bson.M{
 			"$inc": bson.M{
-				"trophies": increment,
+				"trophies": trophiesGained,
 			},
 		}
-		// $inc is key its value is another map containing key as ex : trophies and 5 as their value
+
 		if !isMatchDrawn {
-			// We are appending the field achievements.0 to the existing $inc map within the update variable
-			update["$inc"].(bson.M)["achievements.0"] = 1
+
+			// Handle the case where $inc is not a bson.M
+			update["$inc"] = bson.M{
+				"achievements.0": 1,
+			}
 		}
 
-		// Happens only with the winning player or drawn player so check both players incase drawn
-		// Check if any players scored everything correctly (perfect score)
 		if isPerfectScore {
-			// Always the winner parameter (winner or drawn) is the one who always has the probability to score 100 points even if he drawn the winner (left parameter) is the one to have perfect score
-			update["$set"].(bson.M)["achievements.1"] = true
+
+			update["$set"] = bson.M{
+				"achievements.1": true,
+			}
+
 		}
 
-		// First define the err variable
+		if IsLightingReflexesCompleted {
+
+			update["$set"] = bson.M{
+				"achievements.2": true,
+			}
+
+		}
+
 		_, err := collection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
 			fmt.Printf("Error when updating trophies")
-			//http.Error(w, "Failed to update trophies", http.StatusInternalServerError)
-
 		}
 	}()
+
 	go func() {
-		// Decrement trophy for the losing player
 		filter := bson.M{"profileName": loser}
 		update := bson.M{
 			"$inc": bson.M{
-				"trophies": decrement,
+				"trophies": trophiesLost,
 			},
 		}
-		// Initializing a new value to the err variable
+
+		if isPerfectScore {
+
+			update["$set"] = bson.M{
+				"achievements.1": true,
+			}
+
+		}
+
+		if IsLightingReflexesCompleted {
+
+			update["$set"] = bson.M{
+				"achievements.2": true,
+			}
+
+		}
+
+		//! TODO check 26-12-2024
+		if isMatchDrawn {
+			update["$push"] = bson.M{
+				"history": 1,
+			}
+		}
+		// LOST
+
 		_, err := collection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
 			fmt.Printf("Error when updating trophies")
-			//http.Error(w, "Failed to update trophies", http.StatusInternalServerError)
-
 		}
 	}()
 

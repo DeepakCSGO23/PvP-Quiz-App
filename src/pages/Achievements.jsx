@@ -1,27 +1,27 @@
 import React, { useEffect, useState } from "react";
 import Header from "../components/Header";
 const achievements = [
-  //* Completed
+  //* Completed from backend this is done when updating trophies and then incrementing the winning match count
   {
     id: 1,
     title: "First Victory",
     description: "Win your first 1v1 quiz match.",
   },
-  //* Completed
-
+  //* Completed from frontend
   {
     id: 2,
     title: "Perfect Round",
     description: "Answer all questions in a game correctly.",
   },
-  // ! TOMMORROW
+  //* Completed from frontend
   {
     id: 3,
     title: "Lightning Reflexes",
     description: "Answer a question within 3 seconds.",
   },
-  // * check history
+  // ! DOING THIS BACKEND IN SAME COLLECTION
   { id: 4, title: "Quiz Champion", description: "Win 10 consecutive matches." },
+  // ! maybe send the json from front end after the complete is compelted as [20,20,40,60,80],[20,40,60,80,100] in this format
   {
     id: 5,
     title: "Clutch Performer",
