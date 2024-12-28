@@ -5,27 +5,27 @@ const achievements = [
   {
     id: 1,
     title: "First Victory",
-    description: "Win your first 1v1 quiz match.",
+    description: "Win your first 1v1 quiz match",
   },
-  //* Completed from frontend
+  //* Completed in frontend
   {
     id: 2,
     title: "Perfect Round",
-    description: "Answer all questions in a game correctly.",
+    description: "Answer all questions in a game correctly",
   },
-  //* Completed from frontend
+  //* Completed in frontend
   {
     id: 3,
     title: "Lightning Reflexes",
-    description: "Answer a question within 3 seconds.",
+    description: "Answer a question within 3 seconds",
   },
-  // ! DOING THIS BACKEND IN SAME COLLECTION
-  { id: 4, title: "Quiz Champion", description: "Win 10 consecutive matches." },
-  // ! maybe send the json from front end after the complete is compelted as [20,20,40,60,80],[20,40,60,80,100] in this format
+  //* Completed updating history in the backend -1,0,1 as lost,drawn and won respectively
+  { id: 4, title: "Quiz Champion", description: "Win 10 consecutive matches" },
+  // * Completed in backend
   {
     id: 5,
     title: "Clutch Performer",
-    description: "Win a game after being behind in points.",
+    description: "Win a game after being 40 points behind",
   },
 ];
 

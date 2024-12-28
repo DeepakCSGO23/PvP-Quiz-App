@@ -129,14 +129,15 @@ type Response struct {
 type Message struct {
 	Action string `json:"action"`
 	// If there is no roomId key from json just omit it dont create a new field and assign 0 dont do that just omit it
-	RoomId                      string `json:"roomId,omitempty"`
-	ProfileName                 string `json:"profileName"`
-	PlayerPoints                uint16 `json:"playerPoints,omitempty"`
-	OpponentName                string `json:"opponentName,omitempty"`
-	OpponentPoints              uint16 `json:"opponentTotalPoints,omitempty"`
-	TimeTaken                   uint16 `json:"timeTaken,omitempty"`
-	IsPerfectScore              bool   `json:"isPerfectScore,omitempty"`
-	IsLightingReflexesCompleted bool   `json:"isLightingReflexesCompleted,omitempty"`
+	RoomId                      string   `json:"roomId,omitempty"`
+	ProfileName                 string   `json:"profileName"`
+	PlayerPoints                []uint16 `json:"playerPoints,omitempty"`
+	OpponentName                string   `json:"opponentName,omitempty"`
+	OpponentPoints              []uint16 `json:"opponentTotalPoints,omitempty"`
+	TimeTaken                   uint16   `json:"timeTaken,omitempty"`
+	IsPerfectScore              bool     `json:"isPerfectScore,omitempty"`
+	IsLightingReflexesCompleted bool     `json:"isLightingReflexesCompleted,omitempty"`
+	isClutchPerformer           string   `json:"IsClutchPerformer,omitempty"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
@@ -386,6 +387,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 		var matchFound bool = false
 
+		// Ensuring only one goroutine can enter the critical section (match completed) at a time
+		var queueLock sync.Mutex
 		// Incase the action is join check the queue for any empty room if not create one and add the user to the room
 		if userAction == "connect" {
 			// Traverse the queue and find a match for the user
@@ -446,42 +449,81 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			// The player finishes all the questions and is used to send the player's total points to the opponent
 			roomId := jsonMessage.RoomId
 			profileName := jsonMessage.ProfileName
+			// Receives as array of points
+
 			playerPoints := jsonMessage.PlayerPoints
+			// Unmarshal: Converts JSON to a Go data structure (e.g., array, slice, struct).
+			// Marshal: Converts a Go data structure to JSON
+
 			// The first player is the one who send the total points to the server
 			if playersInQueue[roomId][0].ProfileName == profileName {
 				// We know have the total points scored by player1 so send the data to player2
-				confirmationMessage := []byte(fmt.Sprintf(`{"opponentTotalPoints":"%d"}`, playerPoints))
-				if err := playersInQueue[roomId][1].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+				// * Array of uint16 [0,20,40] -> JSON string [0,20,40]-> Encodede to byte slice (sequence of bytes representing each character in the JSON string using UTF-encoding)
+				// * Byte Slice -> String representation -> Use JSON.parse on that string representation to make use of the data . When you receive  the byte slice in your frontend , the browser automatically converts it into a string representation
+				if err := playersInQueue[roomId][1].Connection.WriteJSON(playerPoints); err != nil {
 					log.Printf("Error sending message to opponent\n")
+				} else {
+					log.Printf("value send is %v ", playerPoints)
 				}
 			} else {
-				// We know have the total points scored by player2 so send the data to player1
-				confirmationMessage := []byte(fmt.Sprintf(`{"opponentTotalPoints":"%d"}`, playerPoints))
-				if err := playersInQueue[roomId][0].Connection.WriteMessage(websocket.TextMessage, confirmationMessage); err != nil {
+
+				if err := playersInQueue[roomId][0].Connection.WriteJSON(playerPoints); err != nil {
 					log.Printf("Error sending message to opponent\n")
 				}
 			}
 		} else if userAction == "match_completed" {
-
-			/* Only process the json data send by the first user who hits the server */
+			//* Anyone of the two players winner or loser can hit the server (only one) , only after the match is completed we know who is winner and who is not
+			// Locking this section so that only one goroutine can come here at a time
+			// If the lock is in use then the goroutine waits until the mutex is available
+			// Once the lock is called , the goroutine gains exclusive access to the critical ssection , other goroutines trying to call the lock will wait until the lock is released
+			queueLock.Lock()
+			// The lock is released when the current goroutine exits the function or completes its processing even if an error occurs or the function returns early
+			defer queueLock.Unlock()
 			roomId := jsonMessage.RoomId
 			playerPoints := jsonMessage.PlayerPoints
 			opponentName := jsonMessage.OpponentName
 			opponentTotalPoints := jsonMessage.OpponentPoints
+
 			// * Calculated from frontend
 			isPerfectScore := jsonMessage.IsPerfectScore
+
 			// * Calculated from frontend
 			isLightingReflexesCompleted := jsonMessage.IsLightingReflexesCompleted
 
+			// * Calculated from backend
+			// Check if the winner is behind by 40 or more points
+			var winner, clutchPerformer string
+			totalPoint := playerPoints[len(playerPoints)-1]
+			opponentTotalPoint := opponentTotalPoints[len(opponentTotalPoints)-1]
+
+			if totalPoint > opponentTotalPoint {
+				winner = userPlayerName
+			} else if opponentTotalPoint > totalPoint {
+				winner = opponentName
+			}
+
+			for i := 0; i < 5; i++ {
+				// Opponent is behind by 40 points or more and then won the match
+				if playerPoints[i]-opponentTotalPoints[i] > 40 && winner == opponentName {
+					clutchPerformer = opponentName
+					break
+				}
+				// Player is behind by 40 points or more and then won the match
+				if opponentTotalPoints[i]-playerPoints[i] > 40 && winner == userPlayerName {
+					clutchPerformer = userPlayerName
+					break
+				}
+			}
+
 			_, exits := playersInQueue[roomId]
-			//! Two player cannot process this simultaneoulsy i assume
+			//! change len
 			if exits {
-				if playerPoints > opponentTotalPoints {
-					updateAchievementData(userPlayerName, isPerfectScore, opponentName, false, isLightingReflexesCompleted, w)
-				} else if playerPoints < opponentTotalPoints {
-					updateAchievementData(opponentName, isPerfectScore, userPlayerName, false, isLightingReflexesCompleted, w)
+				if playerPoint > opponentTotalPoint {
+					updateAchievementData(userPlayerName, isPerfectScore, opponentName, false, isLightingReflexesCompleted, clutchPerformer, w)
+				} else if playerPoint < opponentTotalPoint {
+					updateAchievementData(opponentName, isPerfectScore, userPlayerName, false, isLightingReflexesCompleted, clutchPerformer, w)
 				} else {
-					updateAchievementData(userPlayerName, isPerfectScore, opponentName, true, isLightingReflexesCompleted, w)
+					updateAchievementData(userPlayerName, isPerfectScore, opponentName, true, isLightingReflexesCompleted, clutchPerformer, w)
 				}
 				delete(playersInQueue, roomId)
 			}
@@ -489,7 +531,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func updateAchievementData(winner string, isPerfectScore bool, loser string, isMatchDrawn bool, IsLightingReflexesCompleted bool, w http.ResponseWriter) {
+func updateAchievementData(winner string, isPerfectScore bool, loser string, isMatchDrawn bool, isLightingReflexesCompleted bool, clutchPerformer string, w http.ResponseWriter) {
 
 	// IsPerfectScore and IsLightingReflexesCompleted can happen with any player losing or winning player
 
@@ -518,29 +560,41 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 		}
 
 		if !isMatchDrawn {
-
-			// Handle the case where $inc is not a bson.M
+			// Increment Win counter
 			update["$inc"] = bson.M{
 				"achievements.0": 1,
 			}
 		}
-
+		// Answered everything right
 		if isPerfectScore {
-
 			update["$set"] = bson.M{
 				"achievements.1": true,
 			}
-
 		}
-
-		if IsLightingReflexesCompleted {
-
+		// Answered correctly within 3 seconds
+		if isLightingReflexesCompleted {
 			update["$set"] = bson.M{
 				"achievements.2": true,
 			}
-
 		}
-
+		// Record the result in history
+		// DRAW
+		if isMatchDrawn {
+			update["$push"] = bson.M{
+				"history": 0,
+			}
+		} else {
+			// WON
+			update["$push"] = bson.M{
+				"history": 1,
+			}
+		}
+		// Clutch Performer can always be the winner if he is coming from a draw here dont accept
+		if clutchPerformer != "" && !isMatchDrawn {
+			update["$set"] = bson.M{
+				"achievements.4": true,
+			}
+		}
 		_, err := collection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
 			fmt.Printf("Error when updating trophies")
@@ -554,6 +608,7 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 				"trophies": trophiesLost,
 			},
 		}
+		// Answered everything right
 
 		if isPerfectScore {
 
@@ -562,8 +617,8 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 			}
 
 		}
-
-		if IsLightingReflexesCompleted {
+		// Answered correctly within 3 seconds
+		if isLightingReflexesCompleted {
 
 			update["$set"] = bson.M{
 				"achievements.2": true,
@@ -571,13 +626,18 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 
 		}
 
-		//! TODO check 26-12-2024
+		// Record the result in history
+		// DRAW
 		if isMatchDrawn {
 			update["$push"] = bson.M{
-				"history": 1,
+				"history": 0,
+			}
+		} else {
+			// LOST
+			update["$push"] = bson.M{
+				"history": -1,
 			}
 		}
-		// LOST
 
 		_, err := collection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {

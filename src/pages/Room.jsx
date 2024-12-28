@@ -15,16 +15,17 @@ const Room = () => {
     useState(false);
   const [roomId] = useState(url.get("id"));
   const [profileName] = useState(url.get("profileName"));
-  console.log(url.get("profileName"));
+  const [opponentName] = useState(url.get("opponent"));
   const [opponentTotalPoints, setOpponentTotalPoints] = useState(null);
   const [matchResult, setMatchResult] = useState(null);
   useEffect(() => {
     if (ws) {
       // Handle incoming messages or perform actions
       ws.onmessage = (e) => {
+        console.log(e.data);
         const data = JSON.parse(e.data);
-        // We received opponent total points
-        setOpponentTotalPoints(parseInt(data.opponentTotalPoints));
+        console.log(data);
+        setOpponentTotalPoints(data);
       };
     }
     return () => {
@@ -99,6 +100,7 @@ const Room = () => {
       setQuestionTimer((prevTimer) => {
         if (prevTimer === 0) {
           setQuestionTimer(5);
+          //!  BREAK 5M
           // Increment the question index
           setCurrentQuestionIndex((prevIndex) => {
             const nextIndex = prevIndex + 1;
@@ -128,7 +130,6 @@ const Room = () => {
     // Tracking points locally
     // Add the previously recoreded points with 20 to get new current point
     const newTotalPoint = isCorrectOption ? previousPoint + 20 : previousPoint;
-
     // Move to the next question
     if (currentQuestionIndex < questions.length - 1) {
       // Before moving the index & resetting the time counter check the time taken to select the correct option
@@ -138,15 +139,16 @@ const Room = () => {
       }
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      console.log(newTotalPoint, typeof newTotalPoint);
       // Send these information after completing all the questions
+
       // * We need to send the profile name and player's points data once the player completes the quiz to the websocket server since the opponent needs that data once both player gets the confirmation (gets the opponent's score it is marked as match completed this is where the achivements data process happens)
+      // Sending the array of points to the socket server
       ws.send(
         JSON.stringify({
           action: "player_completed",
           roomId: roomId,
           profileName: profileName,
-          playerPoints: newTotalPoint,
+          playerPoints: [...totalPoints, newTotalPoint],
         })
       );
       // Marking match as completed
@@ -154,31 +156,33 @@ const Room = () => {
     }
     setTotalPoints((prev) => [...prev, newTotalPoint]);
   };
-  // ! CHECK DEPENEDENCIES
+
   // Run sideeffect whenever the match is completed and when we get the opponent's points
   useEffect(() => {
-    // You have to complete the match and also need the opponent's total points
+    // You have to complete the match and also need the opponent's total points then it is considered as the end of the match (we have completed the quiz & have the opponent's total points)
+    const totalPoint = totalPoints[totalPoints.length - 1];
+    const opponentTotalPoint =
+      opponentTotalPoints[opponentTotalPoints.length - 1];
     if (isMatchCompleted && opponentTotalPoints) {
-      if (totalPoints > opponentTotalPoints) {
+      if (totalPoint > opponentTotalPoint) {
         setMatchResult("won");
-      } else if (totalPoints < opponentTotalPoints) {
+      } else if (totalPoint < opponentTotalPoint) {
         setMatchResult("lost");
       } else {
         setMatchResult("tie");
       }
-      // Store the points scored in the quiz
-      // Ending the match removing the players from server
+
       // * If the player disconnects mid game cancel the achievements he made in the game
-      console.log(totalPoints[totalPoints.length - 1]);
+
       ws.send(
         JSON.stringify({
           action: "match_completed",
           roomId: roomId,
           profileName: profileName,
-          playerPoints: totalPoints[totalPoints.length - 1],
+          playerPoints: [totalPoints[totalPoints.length - 1]],
           opponentName: "Mania",
           opponentTotalPoints: opponentTotalPoints,
-          isPerfectScore: totalPoints === 100 ? true : false,
+          isPerfectScore: totalPoint === 100 ? true : false,
           isLightingReflexesCompleted: isLightingReflexesCompleted,
         })
       );
