@@ -15,6 +15,7 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/admin"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 
@@ -24,10 +25,23 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// JWT Key
+var jwtKey = []byte("543jkln543nfgdsk43")
+
+type Credentials struct {
+	ProfileName     string `json:"profileName"`
+	ProfilePassword string `json:"profilePassword"`
+}
+type Claims struct {
+	ProfileName string `json:"profileName"`
+	jwt.StandardClaims
+}
+
 // Maximum 10 request in a minute
 const (
-	requestLimit = 10
-	timeWindow   = 60 * time.Second
+	requestLimit = 1000
+
+	timeWindow = 60 * time.Second
 )
 
 var (
@@ -100,11 +114,12 @@ var collection *mongo.Collection
 
 // Profile struct to hold profile data used during Signup and login
 type Profile struct {
-	ProfileName     string `json:"profileName"`
-	ProfilePassword string `json:"profilePassword"`
+	ProfileName     string `json:"profileName,omitempty"`
+	ProfilePassword string `json:"profilePassword,omitempty"`
 	Status          string `json:"status,omitempty"`
 	Country         string `json:"country,omitempty"`
 	ProfileImageURL string `json:"profileImageURL,omitempty"`
+	Trophies        uint16 `json:"trophies,omitempty"`
 }
 
 // Achievements struct to hold only the achievements completed so far by the user
@@ -113,16 +128,21 @@ type Achievements struct {
 	Achievements []any `json:"achievements"`
 }
 
+// History Item
+// ! 2 items as of now
+type HistoryItem struct {
+	Opponent string `json:"opponent"`
+	Result   string `json:"result"`
+}
+
+// History struct to hold only the matches completed so far by the user
+type History struct {
+	History []HistoryItem `json:"history"`
+}
+
 // Response struct to hold the JSON response message used during sending json message during login
 type Response struct {
-	Message         string `json:"message,omitempty"`
-	ProfileName     string `json:"profileName,omitempty"`
-	ProfilePassword string `json:"profilePassword,omitempty"`
-	// You should use Omitempty because this will skip this field if not set
-	// If we use omitempty that field will be not included in the final json if the field is empty
-	Status          string `json:"status,omitempty"`
-	Country         string `json:"country,omitempty"`
-	ProfileImageURL string `json:"profileImageURL,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Structure of message from client triggered when joinging and leaving the websocket server used when clearing the map entries
@@ -137,14 +157,15 @@ type Message struct {
 	TimeTaken                   uint16   `json:"timeTaken,omitempty"`
 	IsPerfectScore              bool     `json:"isPerfectScore,omitempty"`
 	IsLightingReflexesCompleted bool     `json:"isLightingReflexesCompleted,omitempty"`
-	isClutchPerformer           string   `json:"IsClutchPerformer,omitempty"`
+	IsClutchPerformer           string   `json:"isClutchPerformer,omitempty"`
 }
 
 // Defining a struct to hold both the websocket connection and its profile name
+// ! changed playerpoints dt
 type PlayerInfo struct {
 	Connection   *websocket.Conn
 	ProfileName  string
-	PlayerPoints int
+	PlayerPoints uint16
 }
 
 // A map to store room id as key and array of 2 strings as profile name of two players
@@ -182,31 +203,40 @@ func connectMongoDB() {
 
 // Checking if the profile name already exists
 func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
-	// Get the profile-name query from the query parameter
-	profileName := r.URL.Query().Get("profile-name")
 
-	isRetreiveProfileImage := r.URL.Query().Get("get-profile-image")
-
-	if profileName == "" {
-		http.Error(w, "Missing profile-name parameter", http.StatusBadRequest)
+	// Store Login credentials from user
+	var creds Credentials
+	// Encode the JSON containing profile name and profile password
+	err := json.NewDecoder(r.Body).Decode(&creds)
+	if err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
 
-	// Searching for a document with the given profileName in the MongoDB collection
-	var existingProfile Profile
-	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}).Decode(&existingProfile)
+	profileName := creds.ProfileName
+	profilePassword := creds.ProfilePassword
 
-	// If no document is found, the profile name is not taken, so send an OK response
+	var profilePasswordInDatabase struct {
+		ProfilePassword string `json:"profilePassword"`
+	}
+
+	// First checks if the profile exists or not
+	err = collection.FindOne(context.TODO(), bson.M{"profileName": profileName}, options.FindOne().SetProjection(bson.M{"profilePassword": 1, "_id": 0})).Decode(&profilePasswordInDatabase)
+
+	// Profile doesn't exists notify the user to correct the profile name or create a new profile
 	if err == mongo.ErrNoDocuments {
-		json.NewEncoder(w).Encode(Response{Message: "notTaken"})
+		http.Error(w, "This Name doesn't exists", http.StatusBadRequest)
 		return
 	} else if err != nil {
-		// Other errors (e.g., database connection issues)
-		http.Error(w, "Error checking username", http.StatusInternalServerError)
+		// Error during the decoding process
+		log.Printf("Error during decoding Profile Password!")
+		//http.Error(w, "Error during decoding Profile Password!", http.StatusBadRequest)
 		return
 	}
+
 	// To store profile image url
 	var profileImageURL string
+	isRetreiveProfileImage := "false"
 	// If we want to get the profile image url from cloudinary
 	if isRetreiveProfileImage == "true" {
 		cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME")
@@ -230,19 +260,14 @@ func checkProfileNameExists(w http.ResponseWriter, r *http.Request) {
 		profileImageURL = res.SecureURL
 		fmt.Printf("profile image url is %v", profileImageURL)
 	}
-	// If no error, it means the username exists, so send a conflict response with profile details
-	w.Header().Set("Content-Type", "application/json")
-	// Send the profile name and password in the JSON response
-	response := Response{
-		Message:         "taken",
-		ProfileName:     existingProfile.ProfileName,
-		ProfilePassword: existingProfile.ProfilePassword,
-		Status:          existingProfile.Status,
-		Country:         existingProfile.Country,
-		ProfileImageURL: profileImageURL,
+
+	// Login is successful both the profile name and password is valid
+	if profilePassword == profilePasswordInDatabase.ProfilePassword {
+		w.Write([]byte("Login Successful"))
+	} else {
+		w.Write([]byte("Wrong Password"))
 	}
-	//fmt.Print(response)
-	json.NewEncoder(w).Encode(response)
+
 }
 
 // Save profile data to MongoDB
@@ -309,37 +334,43 @@ func updateProfileData(w http.ResponseWriter, r *http.Request) {
 }
 
 // For getting leaderboard data
+// * USED PROJECTION
 func getLeaderboardData(w http.ResponseWriter, r *http.Request) {
-	opts := options.Find().SetSort(bson.D{{"trohpies", -1}}).SetLimit(10)
-	// Retrieves documents
+	// Setting the options
+	opts := options.Find().SetSort(bson.M{"trophies": -1}).SetProjection(bson.M{"profileName": 1, "trophies": 1}).SetLimit(10)
+	// Returns the cursor over the matching document
 	cursor, err := collection.Find(context.TODO(), bson.M{}, opts)
 	if err != nil {
-		http.Error(w, "Failed to retreive leaderboard data", http.StatusInternalServerError)
-		fmt.Print("error occured")
+		http.Error(w, "Failed to retrieve leaderboard data", http.StatusInternalServerError)
 		return
 	}
+
 	var leaderboard []Profile
-	// All iterates the cursor and decodes each document into results , the results parameter must be a pointer to a slice
+	// .All method Iterates the cursor and decodes each document into results & the result parameter is a pointer to a slice (leaderboard)
 	if err := cursor.All(context.TODO(), &leaderboard); err != nil {
 		http.Error(w, "Failed to decode leaderboard data", http.StatusInternalServerError)
 		return
 	}
-	// All good the cursor is iterated and each document is decoded into results (from bson - binary JSON format to go struct data structure)
+
 	w.Header().Set("Content-Type", "application/json")
+	// Encode Go structure to JSON
 	if err := json.NewEncoder(w).Encode(leaderboard); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		http.Error(w, "Failed to encode leaderboard data", http.StatusInternalServerError)
 	}
 }
 
 // Getting achievements data
-
 func getAchievementData(w http.ResponseWriter, r *http.Request) {
 	profileName := r.URL.Query().Get("profileName")
 	if profileName == "" {
 		http.Error(w, "Missing profile name parameter", http.StatusBadRequest)
 	}
 	// achievements is a variable to store the document returned from database
+	// If the document has multiple fields it's better to use a struct to map them or if the document has only one field we can simply use simple data type like string , int , etc...
 	var achievements Achievements
+	// DeSerializing or Decoding is the same
+	// Decode method converts the mongodb document (BSON Format) into a GO structure represented by achievements
+	// Only the fields with matching BSON tags with the Achievements field name will be populated in the decoding process
 	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}).Decode(&achievements)
 	if err != nil {
 		http.Error(w, "Failed to find achievement data", http.StatusInternalServerError)
@@ -349,7 +380,35 @@ func getAchievementData(w http.ResponseWriter, r *http.Request) {
 	// Serializing the achievements data into JSON format and writing it to the ResponseWriter
 	// First NewEncoder sets up and JSON encoder and the destination where the JSON need to go (Response w in this case)  nd write it to the writer w and Encode performs the actual serialization of the achievements structure
 	if err := json.NewEncoder(w).Encode(achievements); err != nil {
-		http.Error(w, "Failed to encode achievements", http.StatusInternalServerError)
+		http.Error(w, "Failed to encode achievements data", http.StatusInternalServerError)
+		return
+	}
+
+}
+
+// Getting History data
+// * This is the perfect handler function kindly change the approach of remaining functions (mongodb operations)
+// * USED PROJECTION
+func getHistoryData(w http.ResponseWriter, r *http.Request) {
+	profileName := r.URL.Query().Get("profileName")
+	if profileName == "" {
+		http.Error(w, "Missing profile name parameter", http.StatusBadRequest)
+	}
+	var history History
+	// Decoding converts the entire BSON document into Go structure
+	// So better use projection so less data is loaded in-memory and transfered from database to server
+	// So after using projection which gets loads necessary fields in-memory we then decode less no of fields compared to not using a projection which will decode the entire document
+	// After getting only the necessary field/fields we decode it to Go structure
+	err := collection.FindOne(context.TODO(), bson.M{"profileName": profileName}, options.FindOne().SetProjection(bson.M{"history": 1, "_id": 0})).Decode(&history)
+	if err != nil {
+		http.Error(w, "Failed to decode history data", http.StatusInternalServerError)
+		return
+	}
+	// Correctly
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(history); err != nil {
+		http.Error(w, "Failed to encode history data", http.StatusInternalServerError)
 		return
 	}
 
@@ -516,11 +575,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			}
 
 			_, exits := playersInQueue[roomId]
-			//! change len
 			if exits {
-				if playerPoint > opponentTotalPoint {
+				if totalPoint > opponentTotalPoint {
 					updateAchievementData(userPlayerName, isPerfectScore, opponentName, false, isLightingReflexesCompleted, clutchPerformer, w)
-				} else if playerPoint < opponentTotalPoint {
+				} else if totalPoint < opponentTotalPoint {
 					updateAchievementData(opponentName, isPerfectScore, userPlayerName, false, isLightingReflexesCompleted, clutchPerformer, w)
 				} else {
 					updateAchievementData(userPlayerName, isPerfectScore, opponentName, true, isLightingReflexesCompleted, clutchPerformer, w)
@@ -581,12 +639,18 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 		// DRAW
 		if isMatchDrawn {
 			update["$push"] = bson.M{
-				"history": 0,
+				"history": bson.M{
+					"opponent": loser,
+					"result":   "Draw",
+				},
 			}
 		} else {
 			// WON
 			update["$push"] = bson.M{
-				"history": 1,
+				"history": bson.M{
+					"opponent": loser,
+					"result":   "Won",
+				},
 			}
 		}
 		// Clutch Performer can always be the winner if he is coming from a draw here dont accept
@@ -609,33 +673,34 @@ func updateAchievementData(winner string, isPerfectScore bool, loser string, isM
 			},
 		}
 		// Answered everything right
-
 		if isPerfectScore {
-
 			update["$set"] = bson.M{
 				"achievements.1": true,
 			}
-
 		}
 		// Answered correctly within 3 seconds
 		if isLightingReflexesCompleted {
-
 			update["$set"] = bson.M{
 				"achievements.2": true,
 			}
-
 		}
 
 		// Record the result in history
 		// DRAW
 		if isMatchDrawn {
 			update["$push"] = bson.M{
-				"history": 0,
+				"history": bson.M{
+					"opponent": winner,
+					"result":   "Draw",
+				},
 			}
 		} else {
 			// LOST
 			update["$push"] = bson.M{
-				"history": -1,
+				"history": bson.M{
+					"opponent": winner,
+					"result":   "Lost",
+				},
 			}
 		}
 
@@ -721,8 +786,10 @@ func main() {
 	handler := corsHandler.Handler(mux)
 
 	// Websocket connection
+	// Dont add rate limiting middleware for websockets
 	mux.HandleFunc("/ws", handleConnections)
 	// Setting HTTP endpoint for saving profile data
+	// First the CORS Middleware , Rate limiting Middleware then the handler function
 	mux.Handle("/create-profile", rateLimitMiddleware(http.HandlerFunc(createProfile)))
 	// Setting HTTP endpoint for checking profile name (used to check if the username exists or not while creating account and when during login auth)
 	mux.Handle("/check-profile", rateLimitMiddleware(http.HandlerFunc(checkProfileNameExists)))
@@ -732,6 +799,8 @@ func main() {
 	mux.Handle("/leaderboard-data", rateLimitMiddleware(http.HandlerFunc(getLeaderboardData)))
 	// For getting achievement data of a user
 	mux.Handle("/get-achievement-data", rateLimitMiddleware(http.HandlerFunc(getAchievementData)))
+	// For getting history data of a user
+	mux.Handle("/get-history-data", rateLimitMiddleware(http.HandlerFunc(getHistoryData)))
 	// Run this function to store profile image in cloudinary
 	mux.Handle("/update-profile-image", rateLimitMiddleware(http.HandlerFunc(updateProfileImage)))
 

@@ -2,7 +2,7 @@ import "../index.css";
 import "../App.css";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-export default function Signup() {
+export default function Login() {
   const [profileName, setProfileName] = useState("");
   const [profilePassword, setProfilePassword] = useState("");
   const [profileRePassword, setProfileRePassword] = useState("");
@@ -11,14 +11,6 @@ export default function Signup() {
 
   const handleSubmitingProfile = async (e) => {
     e.preventDefault();
-    // First check if the user user name is already taken
-    const response = await fetch(
-      `http://localhost:5000/check-profile?profile-name=${profileName}`,
-      {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }
-    );
 
     // Check first if password and repassword match
     if (profilePassword !== profileRePassword) {
@@ -28,35 +20,39 @@ export default function Signup() {
       }, 4000);
       return;
     }
-    // Contains json data from the golang backend
-    const data = await response.json();
-    console.log(data);
-    // There is no username registered
-    if (data.message === "notTaken") {
-      setErrorMessage("Cannot find player name");
-      setTimeout(() => {
-        setErrorMessage("");
-      }, 4000);
-    }
-    // Profile name is registered already
-    else if (data.message === "taken") {
-      // Password and Repassword dont match
-      if (data.profilePassword !== profilePassword) {
-        setErrorMessage("Wrong Password");
+    try {
+      // First checks if the name is present or not then checks if the password is correct
+      const response = await fetch(
+        `http://localhost:5000/check-profile?profile-name=${profileName}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profileName,
+            profilePassword,
+          }),
+        }
+      );
+      const data = await response.text();
+
+      // Error message from backend
+      if (!response.ok) {
+        console.log(data);
+        setErrorMessage(data);
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
       }
-      // current password and password in database matches
+      // Successful Login because both the profile name and profile password is valid
       else {
-        setErrorMessage("Login Successful");
+        console.log(data);
+        setErrorMessage(data);
         setTimeout(() => {
           setErrorMessage("");
         }, 4000);
-        // ! TEMP SOLUTION : USE JWT AFTERWARS USING LOCAL STORAGE AS OF NOW
-        localStorage.setItem("profileName", profileName);
-        history(`/dashboard?profileName=${profileName}`);
       }
+    } catch (err) {
+      console.error(err);
     }
   };
   return (

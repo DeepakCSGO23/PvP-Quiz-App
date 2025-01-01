@@ -7,7 +7,6 @@ export default function Header() {
     <header className="relative flex flex-col h-32 font-roboto justify-center bg-gradient-to-l from-[#86B1A8] to-[#77918b]">
       <div className="flex items-center justify-center space-x-2">
         <img
-          fetchpriority="high"
           src="logo.png"
           alt="logo"
           height="60"
@@ -125,7 +124,7 @@ export default function Header() {
               </button>
             </Link>
             <Link
-              to="/profile"
+              to="/history"
               className="rounded-3xl p-4 px-6 hover:bg-emerald-500 hover:text-white duration-300"
             >
               <button className="text-left tracking-wide font-medium">

@@ -30,6 +30,7 @@ const achievements = [
 ];
 
 export default function Achievements() {
+  // ! LOCAL STORAGE AS OF NOW
   const [profileName] = useState(localStorage.getItem("profileName"));
   const [achievementsData, setAchievementsData] = useState([]);
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function Achievements() {
             achievements.map((achievement, index) => (
               <li
                 key={achievement.id}
-                className="flex items-end justify-between"
+                className="flex items-center justify-between space-x-2"
               >
                 <div className="flex flex-col">
                   <h1 className="text-lg text-teal-800 font-semibold">
